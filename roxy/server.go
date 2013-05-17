@@ -16,6 +16,8 @@ func roxyServerString() string {
 func setup() {
 	ParseConfig()
 	runtime.GOMAXPROCS(4)
+	FillPool(5)
+	fmt.Printf("%+v", RiakPool)
 }
 
 func Run() {

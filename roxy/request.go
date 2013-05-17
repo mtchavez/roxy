@@ -7,7 +7,6 @@ import (
 	// "errors"
 	"fmt"
 	"net"
-	"strconv"
 )
 
 type Request struct {
@@ -70,29 +69,19 @@ func (req *Request) Close() {
 	// fmt.Println("Finished closing connection")
 }
 
-func riakServerString() string {
-	riak_ip := Configuration.Doc.GetString("riak.development.ip", "127.0.0.1")
-	riak_port := Configuration.Doc.GetInt("riak.development.port", 8087)
-	return riak_ip + ":" + strconv.Itoa(riak_port)
-}
-
 func (req *Request) HandleIncoming(incomming []byte) {
-	server_string := riakServerString()
-	conn, err := net.Dial("tcp", server_string)
-	if err != nil {
-		fmt.Println("Error connection to riak")
-	}
-	_, err = conn.Write(incomming)
+	rconn := GetRiakConn()
+	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
 		fmt.Println("Error writing to riak")
 		return
 	}
 	rawresp := make([]byte, 512)
-	_, err = conn.Read(rawresp)
+	_, err = rconn.Conn.Read(rawresp)
+	rconn.Release()
 	// fmt.Println("ResponseStruct: ", numToCommand[int(rawresp[4])])
 	rawresp = BufferedResponse(rawresp)
 	req.Write(rawresp)
-	conn.Close()
 	fmt.Println()
 }
 
