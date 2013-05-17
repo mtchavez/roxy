@@ -9,6 +9,8 @@ import (
 	"net"
 )
 
+var SharedBuffer []byte
+
 type Request struct {
 	Conn     net.Conn
 	Quit     chan bool
@@ -43,23 +45,23 @@ func BufferedResponse(buffer []byte) []byte {
 }
 
 func (req *Request) Read() (buffer []byte, err error) {
-	buffer = make([]byte, 512)
-	_, err = req.Conn.Read(buffer)
+	// buffer = make([]byte, 512)
+	_, err = req.Conn.Read(SharedBuffer)
 	if err != nil {
 		fmt.Println("Error reading")
 		return
 	}
-	buffer = BufferedResponse(buffer)
-	// fmt.Println("RequestStruct: ", numToCommand[int(buffer[4])])
-	// fmt.Println("Read: ", buffer)
-	fmt.Println()
+	buffer = BufferedResponse(SharedBuffer)
+	// fmt.Println("RequestStruct: ", numToCommand[int(SharedBuffer[4])])
+	// fmt.Println("Read: ", SharedBuffer)
+	// fmt.Println()
 	return
 }
 
 func (req *Request) Write(buffer []byte) {
 	req.Conn.Write(buffer)
 	// fmt.Println("Wrote: ", buffer)
-	fmt.Println()
+	// fmt.Println()
 }
 
 func (req *Request) Close() {
@@ -76,13 +78,12 @@ func (req *Request) HandleIncoming(incomming []byte) {
 		fmt.Println("Error writing to riak")
 		return
 	}
-	rawresp := make([]byte, 512)
-	_, err = rconn.Conn.Read(rawresp)
+	// rawresp := make([]byte, 512)
+	_, err = rconn.Conn.Read(SharedBuffer)
 	rconn.Release()
-	// fmt.Println("ResponseStruct: ", numToCommand[int(rawresp[4])])
-	rawresp = BufferedResponse(rawresp)
-	req.Write(rawresp)
-	fmt.Println()
+	// fmt.Println("ResponseStruct: ", numToCommand[int(SharedBuffer[4])])
+	req.Write(BufferedResponse(SharedBuffer))
+	// fmt.Println()
 }
 
 func (req *Request) Reader() {
