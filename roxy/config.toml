@@ -1,0 +1,29 @@
+title = "Roxy configuration TOML"
+
+[roxy]
+
+  [roxy.development]
+  ip = "127.0.0.1"
+  port = 8088
+
+  [roxy.test]
+  ip = "127.0.0.1"
+  port = 8088
+
+  [roxy.production]
+  ip = "127.0.0.1"
+  port = 8088
+
+[riak]
+
+  [riak.development]
+  ip = "127.0.0.1"
+  port = 8087
+
+  [riak.test]
+  ip = "127.0.0.1"
+  port = 8087
+
+  [riak.production]
+  ip = "127.0.0.1"
+  port = 8087
