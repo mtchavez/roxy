@@ -3,6 +3,7 @@ package roxy
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
 )
 
@@ -14,6 +15,7 @@ func roxyServerString() string {
 
 func setup() {
 	ParseConfig()
+	runtime.GOMAXPROCS(4)
 }
 
 func Run() {

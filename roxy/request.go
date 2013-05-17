@@ -51,23 +51,23 @@ func (req *Request) Read() (buffer []byte, err error) {
 		return
 	}
 	buffer = BufferedResponse(buffer)
-	fmt.Println("RequestStruct: ", numToCommand[int(buffer[4])])
-	fmt.Println("Read: ", buffer)
+	// fmt.Println("RequestStruct: ", numToCommand[int(buffer[4])])
+	// fmt.Println("Read: ", buffer)
 	fmt.Println()
 	return
 }
 
 func (req *Request) Write(buffer []byte) {
 	req.Conn.Write(buffer)
-	fmt.Println("Wrote: ", buffer)
+	// fmt.Println("Wrote: ", buffer)
 	fmt.Println()
 }
 
 func (req *Request) Close() {
-	fmt.Println("Closing connection")
+	// fmt.Println("Closing connection")
 	req.Conn.Close()
 	req.Quit <- true
-	fmt.Println("Finished closing connection")
+	// fmt.Println("Finished closing connection")
 }
 
 func riakServerString() string {
@@ -89,7 +89,7 @@ func (req *Request) HandleIncoming(incomming []byte) {
 	}
 	rawresp := make([]byte, 512)
 	_, err = conn.Read(rawresp)
-	fmt.Println("ResponseStruct: ", numToCommand[int(rawresp[4])])
+	// fmt.Println("ResponseStruct: ", numToCommand[int(rawresp[4])])
 	rawresp = BufferedResponse(rawresp)
 	req.Write(rawresp)
 	conn.Close()
