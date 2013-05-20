@@ -36,6 +36,7 @@ func Run() {
 		conn, err := listenerConn.Accept()
 		if err != nil {
 			fmt.Println("Connection error: ", err)
+			continue
 		}
 		go RequestHandler(conn)
 	}
