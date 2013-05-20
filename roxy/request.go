@@ -76,6 +76,7 @@ func (req *Request) HandleIncoming(incomming []byte) {
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
 		fmt.Println("Error writing to riak")
+		fmt.Println(err)
 		return
 	}
 	_, err = rconn.Conn.Read(SharedBuffer)

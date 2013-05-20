@@ -31,6 +31,9 @@ func (rconn *RiakConn) Lock() {
 }
 
 func (rconn *RiakConn) Release() {
+	mutex := &sync.Mutex{}
+	mutex.Lock()
+	defer mutex.Unlock()
 	rconn.Status = SLEEPING
 	RiakPool = append(RiakPool, rconn)
 }
@@ -80,7 +83,7 @@ func dialServer(server string) (conn *net.TCPConn, err error) {
 	if err != nil {
 		return
 	}
-
+	conn.SetKeepAlive(true)
 	return
 }
 
