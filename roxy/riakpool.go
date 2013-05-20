@@ -1,6 +1,7 @@
 package roxy
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -19,7 +20,10 @@ type RiakConn struct {
 }
 
 func (rconn *RiakConn) String() string {
-	return "[RiakConn] status=" + strconv.Itoa(rconn.Status)
+	fmt.Println("[RiakConn] ", &rconn)
+	fmt.Println("conn=", rconn.Conn)
+	fmt.Println("status=" + strconv.Itoa(rconn.Status))
+	return ""
 }
 
 func (rconn *RiakConn) Lock() {
@@ -28,6 +32,7 @@ func (rconn *RiakConn) Lock() {
 
 func (rconn *RiakConn) Release() {
 	rconn.Status = SLEEPING
+	RiakPool = append(RiakPool, rconn)
 }
 
 func FillPool(num int) {
@@ -56,6 +61,7 @@ func GetRiakConn() (rconn *RiakConn) {
 		rconn = RiakPool[i]
 		if rconn.Status == SLEEPING {
 			rconn.Lock()
+			RiakPool = RiakPool[1:]
 			return
 		}
 	}

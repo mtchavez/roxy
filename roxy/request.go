@@ -20,7 +20,7 @@ type Request struct {
 }
 
 func RequestHandler(conn net.Conn) {
-	quit := make(chan bool)
+	quit := make(chan bool, 2)
 	in := make(chan []byte, 2)
 	req := &Request{Conn: conn, Quit: quit, Incoming: in}
 	go req.Reader()
@@ -45,10 +45,9 @@ func BufferedResponse(buffer []byte) []byte {
 }
 
 func (req *Request) Read() (buffer []byte, err error) {
-	// buffer = make([]byte, 512)
 	_, err = req.Conn.Read(SharedBuffer)
 	if err != nil {
-		fmt.Println("Error reading")
+		// fmt.Println("Error reading")
 		return
 	}
 	buffer = BufferedResponse(SharedBuffer)
@@ -73,12 +72,12 @@ func (req *Request) Close() {
 
 func (req *Request) HandleIncoming(incomming []byte) {
 	rconn := GetRiakConn()
+	// fmt.Printf("Incomming::: %v\n", rconn)
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
 		fmt.Println("Error writing to riak")
 		return
 	}
-	// rawresp := make([]byte, 512)
 	_, err = rconn.Conn.Read(SharedBuffer)
 	rconn.Release()
 	// fmt.Println("ResponseStruct: ", numToCommand[int(SharedBuffer[4])])
