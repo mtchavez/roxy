@@ -1,8 +1,8 @@
 package main
 
 import (
-	"./roxy"
 	"flag"
+	"github.com/mtchavez/roxy/roxy"
 	"log"
 	"os"
 )
