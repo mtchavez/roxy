@@ -2,6 +2,7 @@ package roxy
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -47,7 +48,6 @@ func FillPool(num int) {
 	for i := 0; i < num; i++ {
 		conn, err := dialServer(serverString)
 		if err != nil {
-			// TODO: Log error
 			continue
 		}
 		RiakPool[i] = &RiakConn{conn, SLEEPING}
@@ -75,14 +75,14 @@ func dialServer(server string) (conn *net.TCPConn, err error) {
 	var tcpaddr *net.TCPAddr
 	tcpaddr, err = net.ResolveTCPAddr("tcp", server)
 	if err != nil {
-		// TODO: Log error
+		log.Println("[RiakPool.dialServer] Error resolving Riak addr: ", err)
 		return
 	}
 
 	conn, err = net.DialTCP("tcp", nil, tcpaddr)
 
 	if err != nil {
-		// TODO: Log error
+		log.Println("[RiakPool.dialServer] Error connecting to Riak: ", err)
 		return
 	}
 	conn.SetKeepAlive(true)
@@ -90,7 +90,7 @@ func dialServer(server string) (conn *net.TCPConn, err error) {
 }
 
 func riakServerString() string {
-	riak_ip := Configuration.Doc.GetString("riak.development.ip", "127.0.0.1")
-	riak_port := Configuration.Doc.GetInt("riak.development.port", 8087)
+	riak_ip := Configuration.Doc.GetString("riak.ip", "127.0.0.1")
+	riak_port := Configuration.Doc.GetInt("riak.port", 8087)
 	return riak_ip + ":" + strconv.Itoa(riak_port)
 }

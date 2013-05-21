@@ -3,7 +3,7 @@ package roxy
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"log"
 	"net"
 )
 
@@ -34,7 +34,7 @@ func ParseMessageLength(buffer []byte) int {
 	resplength_buff := bytes.NewBuffer(buffer[0:4])
 	err := binary.Read(resplength_buff, binary.BigEndian, &resplength)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Error parsing message length: ", err)
 	}
 	return int(resplength)
 }
@@ -51,6 +51,7 @@ func (req *Request) checkBufferSize(msglen int) {
 func (req *Request) Read() (buffer []byte, err error) {
 	_, err = req.Conn.Read(req.LengthBuffer)
 	if err != nil {
+		log.Println("Failed to read or nothing to read: ", err)
 		return
 	}
 	var bytesRead int
@@ -62,7 +63,6 @@ func (req *Request) Read() (buffer []byte, err error) {
 		}
 		bytesRead, err = req.Conn.Read(req.SharedBuffer)
 		if err != nil {
-			// TODO: Log error
 			return
 		}
 		req.bytesRead += bytesRead
@@ -86,7 +86,7 @@ func (req *Request) HandleIncoming(incomming []byte) {
 	rconn := GetRiakConn()
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
-		// TODO: Log error
+		log.Println("Error writing to Riak: ", err)
 		return
 	}
 	_, err = rconn.Conn.Read(req.LengthBuffer)
