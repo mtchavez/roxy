@@ -15,11 +15,9 @@ func roxyServerString() string {
 
 func setup() {
 	ParseConfig()
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(8)
 	FillPool(50)
 	fmt.Printf("Pool Size: %v\n", len(RiakPool))
-	SharedBuffer = make([]byte, 64000)
-	fmt.Printf("SharedBuffer Size: %v bytes\n", len(SharedBuffer))
 }
 
 func Run() {

@@ -9,50 +9,68 @@ import (
 	"net"
 )
 
-var SharedBuffer []byte
-
 type Request struct {
-	Conn     net.Conn
-	Quit     chan bool
-	Incoming chan []byte
-	Resp     []byte
-	Error    []byte
+	Conn         net.Conn
+	ReadIn       chan []byte
+	Quit         chan bool
+	SharedBuffer []byte
+	LengthBuffer []byte
 }
 
 func RequestHandler(conn net.Conn) {
-	quit := make(chan bool, 2)
-	in := make(chan []byte, 2)
-	req := &Request{Conn: conn, Quit: quit, Incoming: in}
+	quit := make(chan bool)
+	in := make(chan []byte, 8)
+	sharedbuffer := make([]byte, 64000)
+	lenbuffer := make([]byte, 4)
+	req := &Request{
+		Conn:         conn,
+		ReadIn:       in,
+		Quit:         quit,
+		SharedBuffer: sharedbuffer,
+		LengthBuffer: lenbuffer}
+	go req.Sender()
 	go req.Reader()
-	for {
-		select {
-		case incoming := <-req.Incoming:
-			req.HandleIncoming(incoming)
-		case <-req.Quit:
-			break
-		}
-	}
 }
 
-func BufferedResponse(buffer []byte) []byte {
+func ParseMessageLength(buffer []byte) int {
 	var resplength int32
 	resplength_buff := bytes.NewBuffer(buffer[0:4])
 
 	if err := binary.Read(resplength_buff, binary.BigEndian, &resplength); err != nil {
-		return buffer
+		fmt.Println(err)
 	}
-	return buffer[:resplength+4]
+	return int(resplength)
+}
+
+func (req *Request) checkBufferSize(msglen int) {
+	if (msglen + 4) < len(req.SharedBuffer) {
+		return
+	}
+	newbuff := make([]byte, (msglen+4)*2)
+	copy(newbuff, req.SharedBuffer)
+	req.SharedBuffer = newbuff
 }
 
 func (req *Request) Read() (buffer []byte, err error) {
-	_, err = req.Conn.Read(SharedBuffer)
+	_, err = req.Conn.Read(req.LengthBuffer)
 	if err != nil {
 		// fmt.Println("Error reading")
 		return
 	}
-	buffer = BufferedResponse(SharedBuffer)
+	// fmt.Println(LengthBuffer)
+	msglen := ParseMessageLength(req.LengthBuffer)
+	// fmt.Println(msglen)
+	req.checkBufferSize(msglen)
+	// buffer = SharedBuffer[:msglen]
+	_, err = req.Conn.Read(req.SharedBuffer)
+	if err != nil {
+		// fmt.Println("Error reading")
+		return
+	}
+	buffer = append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
+	// buffer = BufferedResponse(SharedBuffer)
 	// fmt.Println("RequestStruct: ", numToCommand[int(SharedBuffer[4])])
-	// fmt.Println("Read: ", SharedBuffer)
+	// fmt.Println("Read: ", buffer)
 	// fmt.Println()
 	return
 }
@@ -79,25 +97,35 @@ func (req *Request) HandleIncoming(incomming []byte) {
 		fmt.Println(err)
 		return
 	}
-	_, err = rconn.Conn.Read(SharedBuffer)
-	rconn.Release()
+	_, err = rconn.Conn.Read(req.LengthBuffer)
 	// fmt.Println("ResponseStruct: ", numToCommand[int(SharedBuffer[4])])
-	req.Write(BufferedResponse(SharedBuffer))
+	msglen := ParseMessageLength(req.LengthBuffer)
+	req.checkBufferSize(msglen)
+	_, err = rconn.Conn.Read(req.SharedBuffer)
+	rconn.Release()
+	// fmt.Println("Writing: ", SharedBuffer[:msglen])
+	req.Write(append(req.LengthBuffer, req.SharedBuffer[:msglen]...))
 	// fmt.Println()
 }
 
 func (req *Request) Reader() {
 	for {
+		buf, err := req.Read()
+		if err != nil {
+			req.Close()
+			break
+		}
+		req.ReadIn <- buf
+	}
+}
+
+func (req *Request) Sender() {
+	for {
 		select {
+		case incomming := <-req.ReadIn:
+			req.HandleIncoming(incomming)
 		case <-req.Quit:
 			break
-		default:
-			buf, err := req.Read()
-			if err != nil {
-				req.Close()
-				return
-			}
-			req.Incoming <- buf
 		}
 	}
 }
