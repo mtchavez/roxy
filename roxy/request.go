@@ -13,19 +13,18 @@ type Request struct {
 	Quit         chan bool
 	SharedBuffer []byte
 	LengthBuffer []byte
+	bytesRead    int
 }
 
 func RequestHandler(conn net.Conn) {
 	quit := make(chan bool)
 	in := make(chan []byte, 8)
-	sharedbuffer := make([]byte, 64000)
-	lenbuffer := make([]byte, 4)
 	req := &Request{
 		Conn:         conn,
 		ReadIn:       in,
 		Quit:         quit,
-		SharedBuffer: sharedbuffer,
-		LengthBuffer: lenbuffer}
+		SharedBuffer: make([]byte, 64000),
+		LengthBuffer: make([]byte, 4)}
 	go req.Sender()
 	go req.Reader()
 }
@@ -33,8 +32,8 @@ func RequestHandler(conn net.Conn) {
 func ParseMessageLength(buffer []byte) int {
 	var resplength int32
 	resplength_buff := bytes.NewBuffer(buffer[0:4])
-
-	if err := binary.Read(resplength_buff, binary.BigEndian, &resplength); err != nil {
+	err := binary.Read(resplength_buff, binary.BigEndian, &resplength)
+	if err != nil {
 		fmt.Println(err)
 	}
 	return int(resplength)
@@ -54,15 +53,23 @@ func (req *Request) Read() (buffer []byte, err error) {
 	if err != nil {
 		return
 	}
-
+	var bytesRead int
 	msglen := ParseMessageLength(req.LengthBuffer)
 	req.checkBufferSize(msglen)
-	_, err = req.Conn.Read(req.SharedBuffer)
-	if err != nil {
-		// TODO: Log error
-		return
+	for {
+		if req.bytesRead >= msglen {
+			break
+		}
+		bytesRead, err = req.Conn.Read(req.SharedBuffer)
+		if err != nil {
+			// TODO: Log error
+			return
+		}
+		req.bytesRead += bytesRead
+		buffer = append(buffer, req.SharedBuffer[:bytesRead]...)
 	}
-	buffer = append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
+	buffer = append(req.LengthBuffer, buffer...)
+	req.bytesRead = 0
 	return
 }
 
