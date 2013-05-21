@@ -75,12 +75,14 @@ func dialServer(server string) (conn *net.TCPConn, err error) {
 	var tcpaddr *net.TCPAddr
 	tcpaddr, err = net.ResolveTCPAddr("tcp", server)
 	if err != nil {
+		// TODO: Log error
 		return
 	}
 
 	conn, err = net.DialTCP("tcp", nil, tcpaddr)
 
 	if err != nil {
+		// TODO: Log error
 		return
 	}
 	conn.SetKeepAlive(true)

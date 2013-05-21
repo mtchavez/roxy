@@ -2,9 +2,7 @@ package roxy
 
 import (
 	"bytes"
-	// "code.google.com/p/goprotobuf/proto"
 	"encoding/binary"
-	// "errors"
 	"fmt"
 	"net"
 )
@@ -54,58 +52,42 @@ func (req *Request) checkBufferSize(msglen int) {
 func (req *Request) Read() (buffer []byte, err error) {
 	_, err = req.Conn.Read(req.LengthBuffer)
 	if err != nil {
-		// fmt.Println("Error reading")
 		return
 	}
-	// fmt.Println(LengthBuffer)
+
 	msglen := ParseMessageLength(req.LengthBuffer)
-	// fmt.Println(msglen)
 	req.checkBufferSize(msglen)
-	// buffer = SharedBuffer[:msglen]
 	_, err = req.Conn.Read(req.SharedBuffer)
 	if err != nil {
-		// fmt.Println("Error reading")
+		// TODO: Log error
 		return
 	}
 	buffer = append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
-	// buffer = BufferedResponse(SharedBuffer)
-	// fmt.Println("RequestStruct: ", numToCommand[int(SharedBuffer[4])])
-	// fmt.Println("Read: ", buffer)
-	// fmt.Println()
 	return
 }
 
 func (req *Request) Write(buffer []byte) {
 	req.Conn.Write(buffer)
-	// fmt.Println("Wrote: ", buffer)
-	// fmt.Println()
 }
 
 func (req *Request) Close() {
-	// fmt.Println("Closing connection")
 	req.Conn.Close()
 	req.Quit <- true
-	// fmt.Println("Finished closing connection")
 }
 
 func (req *Request) HandleIncoming(incomming []byte) {
 	rconn := GetRiakConn()
-	// fmt.Printf("Incomming::: %v\n", rconn)
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
-		fmt.Println("Error writing to riak")
-		fmt.Println(err)
+		// TODO: Log error
 		return
 	}
 	_, err = rconn.Conn.Read(req.LengthBuffer)
-	// fmt.Println("ResponseStruct: ", numToCommand[int(SharedBuffer[4])])
 	msglen := ParseMessageLength(req.LengthBuffer)
 	req.checkBufferSize(msglen)
 	_, err = rconn.Conn.Read(req.SharedBuffer)
 	rconn.Release()
-	// fmt.Println("Writing: ", SharedBuffer[:msglen])
 	req.Write(append(req.LengthBuffer, req.SharedBuffer[:msglen]...))
-	// fmt.Println()
 }
 
 func (req *Request) Reader() {
