@@ -20,7 +20,7 @@ func Setup(configpath string) {
 	FillPool(poolSize)
 }
 
-func Run() {
+func RunProxy() {
 	server_string := roxyServerString()
 	listenerConn, netErr := net.Listen("tcp", server_string)
 	if netErr != nil {

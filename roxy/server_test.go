@@ -1,9 +1,9 @@
 package roxy
 
 import (
-	"testing"
+	. "launchpad.net/gocheck"
 )
 
-func TestThings(t *testing.T) {
+func (s *MySuite) TestHelloWorld(c *C) {
 
 }
