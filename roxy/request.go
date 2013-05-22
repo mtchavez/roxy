@@ -69,6 +69,8 @@ func (req *Request) Read() (buffer []byte, err error) {
 		buffer = append(buffer, req.SharedBuffer[:bytesRead]...)
 	}
 	buffer = append(req.LengthBuffer, buffer...)
+	log.Println("RequestStruct: ", numToCommand[int(buffer[4])])
+	log.Printf("[READ]\n%v\n[END READ]\n", buffer)
 	req.bytesRead = 0
 	return
 }
@@ -89,12 +91,20 @@ func (req *Request) HandleIncoming(incomming []byte) {
 		log.Println("Error writing to Riak: ", err)
 		return
 	}
+Receive:
 	_, err = rconn.Conn.Read(req.LengthBuffer)
 	msglen := ParseMessageLength(req.LengthBuffer)
 	req.checkBufferSize(msglen)
 	_, err = rconn.Conn.Read(req.SharedBuffer)
 	rconn.Release()
-	req.Write(append(req.LengthBuffer, req.SharedBuffer[:msglen]...))
+	newbuffer := append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
+	log.Println("ResponseStruct: ", numToCommand[int(newbuffer[4])])
+	log.Printf("[RIAK RESPONSE]\n%v\n[END RIAK RESPONSE]\n", newbuffer)
+	req.Write(newbuffer)
+	log.Println(newbuffer)
+	if int(newbuffer[4]) == 24 && !bytes.Equal(newbuffer, []byte{0, 0, 0, 3, 24, 24, 1}) {
+		goto Receive
+	}
 }
 
 func (req *Request) Reader() {

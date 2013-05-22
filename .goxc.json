@@ -1,0 +1,27 @@
+{
+  "ArtifactsDest": "./bin",
+  "TasksExclude": [
+    "go-vet",
+    "go-test"
+  ],
+  "TasksAppend": [
+    "go-fmt"
+  ],
+  "Resources": {
+    "Include": "README.md"
+  },
+  "PackageVersion": "0.0.1",
+  "TaskSettings": {
+    "pkg-build": {
+      "metadata": {
+        "description": "Riak Proxy in Go",
+        "maintainer": "Chavez (https://github.com/mtchavez)"
+      },
+      "metadata-deb": {
+        "Depends": "golang",
+        "Homepage": "https://github.com/mtchavez/roxy"
+      }
+    }
+  },
+  "FormatVersion": "0.6"
+}
