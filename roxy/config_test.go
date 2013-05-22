@@ -1,15 +1,16 @@
 package roxy
 
 import (
+	"github.com/laurent22/toml-go/toml"
 	. "launchpad.net/gocheck"
 )
 
-func (s *MySuite) TestBadConfigPath(c *C) {
+func (s *MySuite) TestBadParseConfig(c *C) {
 	parse := func() { ParseConfig("invalid/path") }
 	c.Assert(parse, PanicMatches, `open.*: no such file or directory`)
 }
 
-func (s *MySuite) TestValidConfig(c *C) {
+func (s *MySuite) TestValidParseConfig(c *C) {
 	ParseConfig("./config.toml")
 
 	roxy_ip := Configuration.Doc.GetString("roxy.ip")
@@ -23,4 +24,8 @@ func (s *MySuite) TestValidConfig(c *C) {
 	c.Assert(riak_ip, Equals, "127.0.0.1")
 	c.Assert(riak_port, Equals, 8087)
 	c.Assert(pool_size, Equals, 5)
+}
+
+func (s *MySuite) TestValidConfig(c *C) {
+	c.Assert(Configuration.Doc, FitsTypeOf, toml.Document{})
 }

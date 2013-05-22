@@ -17,7 +17,7 @@ func main() {
 	flag.Parse()
 	checkConfig(*config)
 	roxy.Setup(*config)
-	roxy.Run()
+	roxy.RunProxy()
 }
 
 func checkConfig(path string) {
