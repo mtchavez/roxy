@@ -17,6 +17,7 @@ type Request struct {
 }
 
 func RequestHandler(conn net.Conn) {
+	go trackNewClient()
 	quit := make(chan bool)
 	in := make(chan []byte, 8)
 	req := &Request{
@@ -94,12 +95,13 @@ Receive:
 	msglen := ParseMessageLength(req.LengthBuffer)
 	req.checkBufferSize(msglen)
 	_, err = rconn.Conn.Read(req.SharedBuffer)
-	rconn.Release()
 	newbuffer := append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
 	req.Write(newbuffer)
+	go trackCmdsProcessed()
 	if int(newbuffer[4]) == 24 && !bytes.Equal(newbuffer, []byte{0, 0, 0, 3, 24, 24, 1}) {
 		goto Receive
 	}
+	rconn.Release()
 }
 
 func (req *Request) Reader() {
