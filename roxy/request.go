@@ -3,8 +3,12 @@ package roxy
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/mtchavez/go-statsite/statsite"
+	"io"
 	"log"
 	"net"
+	"strconv"
+	"time"
 )
 
 type Request struct {
@@ -14,18 +18,28 @@ type Request struct {
 	SharedBuffer []byte
 	LengthBuffer []byte
 	bytesRead    int
+	statsEnabled bool
+	StatsClient  *statsite.Client
 }
 
 func RequestHandler(conn net.Conn) {
-	go trackNewClient()
 	quit := make(chan bool)
 	in := make(chan []byte, 8)
+	statsEnabled := Configuration.Doc.GetBool("roxy.statsite", false)
 	req := &Request{
 		Conn:         conn,
 		ReadIn:       in,
 		Quit:         quit,
 		SharedBuffer: make([]byte, 64000),
-		LengthBuffer: make([]byte, 4)}
+		LengthBuffer: make([]byte, 4),
+		statsEnabled: statsEnabled}
+	if statsEnabled {
+		client, err := InitStatsite()
+		if err == nil {
+			req.StatsClient = client
+		}
+	}
+	go req.trackNewClient()
 	go req.Sender()
 	go req.Reader()
 }
@@ -52,7 +66,9 @@ func (req *Request) checkBufferSize(msglen int) {
 func (req *Request) Read() (buffer []byte, err error) {
 	_, err = req.Conn.Read(req.LengthBuffer)
 	if err != nil {
-		log.Println("Failed to read or nothing to read: ", err)
+		if err != io.EOF {
+			log.Println("Failed to read: ", err)
+		}
 		return
 	}
 	var bytesRead int
@@ -96,9 +112,14 @@ Receive:
 	req.checkBufferSize(msglen)
 	_, err = rconn.Conn.Read(req.SharedBuffer)
 	newbuffer := append(req.LengthBuffer, req.SharedBuffer[:msglen]...)
+	startTime := time.Now()
 	req.Write(newbuffer)
-	go trackCmdsProcessed()
-	if int(newbuffer[4]) == 24 && !bytes.Equal(newbuffer, []byte{0, 0, 0, 3, 24, 24, 1}) {
+	endTime := time.Now()
+	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
+	go req.trackLatency(strconv.FormatFloat(ms, 'E', -1, 64))
+	go req.trackCmdsProcessed()
+	if newbuffer[4] == commandToNum["RpbMapRedResp"] &&
+		!bytes.Equal(newbuffer, MapRedDone) {
 		goto Receive
 	}
 	rconn.Release()

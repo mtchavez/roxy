@@ -3,6 +3,7 @@ title = "Roxy configuration TOML"
 [roxy]
   ip = "127.0.0.1"
   port = 8088
+  statsite = true
 
 [riak]
   ip = "127.0.0.1"

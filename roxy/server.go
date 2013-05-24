@@ -18,7 +18,6 @@ func Setup(configpath string) {
 	runtime.GOMAXPROCS(8)
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	FillPool(poolSize)
-	InitStatsite()
 }
 
 func RunProxy() {
