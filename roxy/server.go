@@ -7,6 +7,8 @@ import (
 	"strconv"
 )
 
+var TotalClients = 0
+
 func roxyServerString() string {
 	roxy_ip := Configuration.Doc.GetString("roxy.ip", "127.0.0.1")
 	roxy_port := Configuration.Doc.GetInt("roxy.port", 8088)
@@ -18,6 +20,7 @@ func Setup(configpath string) {
 	runtime.GOMAXPROCS(8)
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	FillPool(poolSize)
+	go StatPoller()
 }
 
 func RunProxy() {
@@ -28,13 +31,18 @@ func RunProxy() {
 		return
 	}
 
-	defer listenerConn.Close()
+	defer func() {
+		listenerConn.Close()
+		TotalClients--
+	}()
 	for {
 		conn, err := listenerConn.Accept()
 		if err != nil {
 			log.Println("Connection error: ", err)
 			continue
 		}
+		TotalClients++
+		log.Printf("\t\t>>>>>>>>>> << Listener Conection Accepted >>")
 		go RequestHandler(conn)
 	}
 }

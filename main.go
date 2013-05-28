@@ -5,9 +5,10 @@ import (
 	"github.com/mtchavez/roxy/roxy"
 	"log"
 	"os"
+	"runtime"
 )
 
-func main() {
+func init() {
 	config := flag.String("config", "./roxy/config.toml", "Path to config file")
 
 	flag.Usage = func() {
@@ -16,7 +17,23 @@ func main() {
 	}
 	flag.Parse()
 	checkConfig(*config)
-	roxy.Setup(*config)
+	roxy.ParseConfig(*config)
+	runtime.GOMAXPROCS(8)
+	poolSize := roxy.Configuration.Doc.GetInt("riak.pool_size", 5)
+	roxy.FillPool(poolSize)
+	go roxy.StatPoller()
+}
+
+func main() {
+	// config := flag.String("config", "./roxy/config.toml", "Path to config file")
+
+	// flag.Usage = func() {
+	// 	log.Printf("Usage %s [OPTIONS] [name ...]\n", os.Args[0])
+	// 	flag.PrintDefaults()
+	// }
+	// flag.Parse()
+	// checkConfig(*config)
+	// roxy.Setup(*config)
 	roxy.RunProxy()
 }
 

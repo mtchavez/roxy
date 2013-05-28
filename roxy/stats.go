@@ -4,19 +4,29 @@ import (
 	"github.com/mtchavez/go-statsite/statsite"
 	"io"
 	"log"
+	"strconv"
+	"time"
 )
 
 func InitStatsite() (client *statsite.Client, err error) {
 	return statsite.NewClient("0.0.0.0:8125")
 }
 
-func (req *Request) trackNewClient() {
+func StatPoller() {
+	for {
+		time.Sleep(10 * time.Second)
+		log.Println("WaitSize: ", len(RiakPool.WaitQueue))
+		// go req.trackTotalClients()
+	}
+}
+
+func (req *Request) trackTotalClient() {
 	if !req.statsEnabled {
 		return
 	}
 	retries := 0
 Retry:
-	msg := &statsite.CountMsg{"roxy.clients.new", "1"}
+	msg := &statsite.CountMsg{"roxy.clients.new", strconv.Itoa(TotalClients)}
 	_, err := req.StatsClient.Emit(msg)
 	if err != nil && retries <= 3 {
 		if err == io.ErrClosedPipe {
@@ -47,10 +57,12 @@ Retry:
 	}
 }
 
-func (req *Request) trackLatency(time string) {
+func (req *Request) trackLatency(startTime, endTime time.Time) {
 	if !req.statsEnabled {
 		return
 	}
+	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
+	time := strconv.FormatFloat(ms, 'E', -1, 64)
 	retries := 0
 Retry:
 	msg := &statsite.TimeMsg{"roxy.write.time", time}

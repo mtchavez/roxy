@@ -1,7 +1,6 @@
 package roxy
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -9,16 +8,20 @@ import (
 	"sync"
 )
 
-var RiakPool *Pool
-
 const (
 	SLEEPING = iota
 	BUSY
 )
 
+var poolcc = make([]*RiakConn, 5)
+var poolwq = make([]chan *RiakConn, 0)
+var poolm = &sync.Mutex{}
+
 type Pool struct {
-	index       int
-	Connections []*RiakConn
+	index     int
+	ConnQueue []*RiakConn
+	WaitQueue []chan *RiakConn
+	m         *sync.Mutex
 }
 
 type RiakConn struct {
@@ -26,29 +29,50 @@ type RiakConn struct {
 	Status int
 }
 
+var RiakPool = Pool{
+	index:     0,
+	ConnQueue: poolcc,
+	WaitQueue: poolwq,
+	m:         poolm,
+}
+
 func (p *Pool) Push(rconn *RiakConn) (bool, error) {
-	mutex := &sync.Mutex{}
-	mutex.Lock()
-	defer mutex.Unlock()
-	if p.index+1 > len(p.Connections) {
-		return false, errors.New("Pool is full")
+	// mutex := &sync.Mutex{}
+	RiakPool.m.Lock()
+	fmt.Printf("[PUSH] POOL: &p=%p p.index=%v\n", &RiakPool, RiakPool.index)
+	if len(RiakPool.WaitQueue) > 0 {
+		ch := RiakPool.WaitQueue[0]
+		RiakPool.WaitQueue = RiakPool.WaitQueue[1:]
+		RiakPool.m.Unlock()
+		ch <- rconn
+		return true, nil
 	}
-	p.Connections[p.index] = rconn
-	p.index += 1
+	RiakPool.ConnQueue[RiakPool.index] = rconn
+	RiakPool.index += 1
+	RiakPool.m.Unlock()
 	return true, nil
 }
 
 func (p *Pool) Pop() (*RiakConn, error) {
-	mutex := &sync.Mutex{}
-	mutex.Lock()
-	defer mutex.Unlock()
-	if p.index == 0 {
-		return nil, errors.New("No more connections in pool")
+	// mutex := &sync.Mutex{}
+	RiakPool.m.Lock()
+	fmt.Printf("[POP] POOL: &p=%p p.index=%v\n", &RiakPool, RiakPool.index)
+	if RiakPool.index > 0 {
+		RiakPool.index = RiakPool.index - 1
+		rconn := RiakPool.ConnQueue[RiakPool.index]
+		rconn.Lock()
+		RiakPool.m.Unlock()
+		return rconn, nil
 	}
-	p.index -= 1
-	rconn := p.Connections[p.index]
-	rconn.Lock()
+	log.Println("\t\tNeed to wait for a connection\n")
+	ch := make(chan *RiakConn)
+	// TODO: Handle case of at wait queue limit
+	RiakPool.WaitQueue = append(RiakPool.WaitQueue, ch)
+	log.Println("Waiting for connection")
+	rconn := <-ch
+	RiakPool.m.Unlock()
 	return rconn, nil
+
 }
 
 func (rconn *RiakConn) String() string {
@@ -71,7 +95,9 @@ func FillPool(num int) {
 	if num <= 0 {
 		num = 5
 	}
-	RiakPool = &Pool{0, make([]*RiakConn, num)}
+	log.Printf("\t\t[FillPool] POOL: &p=%p p.index=%v\n", &RiakPool, RiakPool.index)
+	// RiakPool = &Pool{0, make([]*RiakConn, num), make([]chan *RiakConn, 0), &sync.Mutex{}}
+	RiakPool.ConnQueue = make([]*RiakConn, num)
 	serverString := riakServerString()
 	for i := 0; i < num; i++ {
 		conn, err := dialServer(serverString)
@@ -80,6 +106,15 @@ func FillPool(num int) {
 		}
 		RiakPool.Push(&RiakConn{conn, SLEEPING})
 	}
+}
+
+func (rconn *RiakConn) ReDialConn() {
+	serverString := riakServerString()
+	conn, err := dialServer(serverString)
+	if err != nil {
+		return
+	}
+	rconn.Conn = conn
 }
 
 func GetRiakConn() (rconn *RiakConn) {

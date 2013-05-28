@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"time"
 )
 
@@ -23,6 +22,7 @@ type Request struct {
 }
 
 func RequestHandler(conn net.Conn) {
+	log.Printf("\n\n *** NEW CLIENT REQUEST HANDLER *** \n\n")
 	quit := make(chan bool)
 	in := make(chan []byte, 8)
 	statsEnabled := Configuration.Doc.GetBool("roxy.statsite", false)
@@ -39,7 +39,6 @@ func RequestHandler(conn net.Conn) {
 			req.StatsClient = client
 		}
 	}
-	go req.trackNewClient()
 	go req.Sender()
 	go req.Reader()
 }
@@ -101,10 +100,21 @@ func (req *Request) Close() {
 
 func (req *Request) HandleIncoming(incomming []byte) {
 	rconn := GetRiakConn()
+	log.Printf("\t\t[Request] POOL: &p=%p p.index=%v\n", &RiakPool, RiakPool.index)
+	log.Printf("\t\t[Request] Conn: &c=%p\n", &req.Conn)
+ReWrite:
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
-		log.Println("Error writing to Riak: ", err)
-		return
+		// log.Println("Error writing to Riak: ", err)
+		// req.Write([]byte{0, 0, 0, 0})
+		// rconn.Release()
+		// return
+		rconn.Conn.Close()
+		time.Sleep(100)
+		rconn.ReDialConn()
+
+		log.Println("Rewrite")
+		goto ReWrite
 	}
 Receive:
 	_, err = rconn.Conn.Read(req.LengthBuffer)
@@ -115,8 +125,7 @@ Receive:
 	startTime := time.Now()
 	req.Write(newbuffer)
 	endTime := time.Now()
-	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
-	go req.trackLatency(strconv.FormatFloat(ms, 'E', -1, 64))
+	go req.trackLatency(startTime, endTime)
 	go req.trackCmdsProcessed()
 	if newbuffer[4] == commandToNum["RpbMapRedResp"] &&
 		!bytes.Equal(newbuffer, MapRedDone) {
