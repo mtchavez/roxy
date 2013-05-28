@@ -28,6 +28,10 @@ var commandToNum = map[string]byte{
 	"RpbSetBucketResp":     22,
 	"RpbMapRedReq":         23,
 	"RpbMapRedResp":        24,
+	"RpbIndexReq":          25,
+	"RpbIndexResp":         26,
+	"RpbSearchQueryReq":    27,
+	"RpbSearchQueryResp":   28,
 }
 
 var numToCommand = map[int]string{
@@ -56,4 +60,8 @@ var numToCommand = map[int]string{
 	22: "RpbSetBucketResp",
 	23: "RpbMapRedReq",
 	24: "RpbMapRedResp",
+	25: "RpbIndexReq",
+	26: "RpbIndexResp",
+	27: "RpbSearchQueryReq",
+	28: "RpbSearchQueryResp",
 }
