@@ -13,7 +13,6 @@ import (
 type Request struct {
 	Conn         net.Conn
 	ReadIn       chan []byte
-	Quit         chan bool
 	SharedBuffer []byte
 	LengthBuffer []byte
 	bytesRead    int
@@ -22,18 +21,14 @@ type Request struct {
 }
 
 func RequestHandler(conn net.Conn) {
-	log.Printf("\n\n *** NEW CLIENT REQUEST HANDLER *** \n\n")
-	quit := make(chan bool)
 	in := make(chan []byte, 8)
-	statsEnabled := Configuration.Doc.GetBool("roxy.statsite", false)
 	req := &Request{
 		Conn:         conn,
 		ReadIn:       in,
-		Quit:         quit,
 		SharedBuffer: make([]byte, 64000),
 		LengthBuffer: make([]byte, 4),
-		statsEnabled: statsEnabled}
-	if statsEnabled {
+	}
+	if StatsEnabled {
 		client, err := InitStatsite()
 		if err == nil {
 			req.StatsClient = client
@@ -94,14 +89,13 @@ func (req *Request) Write(buffer []byte) {
 }
 
 func (req *Request) Close() {
+	close(req.ReadIn)
 	req.Conn.Close()
-	req.Quit <- true
+	TotalClients--
 }
 
 func (req *Request) HandleIncoming(incomming []byte) {
 	rconn := GetRiakConn()
-	log.Printf("\t\t[Request] POOL: &p=%p p.index=%v\n", &RiakPool, RiakPool.index)
-	log.Printf("\t\t[Request] Conn: &c=%p\n", &req.Conn)
 ReWrite:
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
@@ -135,23 +129,17 @@ Receive:
 }
 
 func (req *Request) Reader() {
-	for {
-		buf, err := req.Read()
-		if err != nil {
-			req.Close()
-			break
-		}
-		req.ReadIn <- buf
+	buf, err := req.Read()
+	if err != nil {
+		req.Close()
+		return
 	}
+	req.ReadIn <- buf
 }
 
 func (req *Request) Sender() {
-	for {
-		select {
-		case incomming := <-req.ReadIn:
-			req.HandleIncoming(incomming)
-		case <-req.Quit:
-			break
-		}
+	for incoming := range req.ReadIn {
+		req.HandleIncoming(incoming)
+		req.Reader()
 	}
 }

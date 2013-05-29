@@ -13,7 +13,7 @@ func (s *MySuite) TestValidRiakConn(c *C) {
 }
 
 func (s *MySuite) TestValidRiakPool(c *C) {
-	c.Assert(RiakPool, FitsTypeOf, []*RiakConn{})
+	c.Assert(RiakPool.ConnQueue, FitsTypeOf, []*RiakConn{})
 }
 
 func (s *MySuite) TestRiakServerString(c *C) {
@@ -24,20 +24,20 @@ func (s *MySuite) TestRiakServerString(c *C) {
 func (s *MySuite) TestFillPool(c *C) {
 	ParseConfig("./config.toml")
 
-	c.Assert(RiakPool, HasLen, 0)
+	c.Assert(RiakPool.ConnQueue, HasLen, 5)
 	FillPool(-1)
-	c.Assert(RiakPool, HasLen, 5)
+	c.Assert(RiakPool.ConnQueue, HasLen, 5)
 
-	RiakPool = []*RiakConn{}
+	RiakPool.ConnQueue = []*RiakConn{}
 
-	c.Assert(RiakPool, HasLen, 0)
+	c.Assert(RiakPool.ConnQueue, HasLen, 0)
 	FillPool(0)
-	c.Assert(RiakPool, HasLen, 5)
+	c.Assert(RiakPool.ConnQueue, HasLen, 5)
 
 	FillPool(15)
-	c.Assert(RiakPool, HasLen, 15)
+	c.Assert(RiakPool.ConnQueue, HasLen, 15)
 
-	c.Assert(RiakPool[0], FitsTypeOf, &RiakConn{})
+	c.Assert(RiakPool.ConnQueue[0], FitsTypeOf, &RiakConn{})
 }
 
 func (s *MySuite) TestGetRiakConn(c *C) {
@@ -58,7 +58,9 @@ func (s *MySuite) TestRiakConnLock(c *C) {
 }
 
 func (s *MySuite) TestRiakConnRelease(c *C) {
-	rconn := &RiakConn{Status: BUSY}
+	Setup("./config.toml")
+	rconn, _ := RiakPool.Pop()
+	rconn.Status = BUSY
 	rconn.Release()
 	c.Assert(rconn.Status, Equals, SLEEPING)
 }

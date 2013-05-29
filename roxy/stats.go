@@ -16,18 +16,46 @@ func StatPoller() {
 	for {
 		time.Sleep(10 * time.Second)
 		log.Println("WaitSize: ", len(RiakPool.WaitQueue))
-		// go req.trackTotalClients()
+		go trackWaitQueueSize()
+		go trackTotalClients()
 	}
 }
 
-func (req *Request) trackTotalClient() {
-	if !req.statsEnabled {
+func trackTotalClients() {
+	if !StatsEnabled {
 		return
 	}
 	retries := 0
 Retry:
-	msg := &statsite.CountMsg{"roxy.clients.new", strconv.Itoa(TotalClients)}
-	_, err := req.StatsClient.Emit(msg)
+	msg := &statsite.CountMsg{"roxy.clients.total", strconv.Itoa(TotalClients)}
+	client, err := InitStatsite()
+	if err != nil {
+		goto Retry
+	}
+	_, err = client.Emit(msg)
+	if err != nil && retries <= 3 {
+		if err == io.ErrClosedPipe {
+			retries++
+			InitStatsite()
+			goto Retry
+		}
+
+		log.Println("Error writing to statsite: ", err)
+	}
+}
+
+func trackWaitQueueSize() {
+	if !StatsEnabled {
+		return
+	}
+	retries := 0
+Retry:
+	msg := &statsite.CountMsg{"roxy.requests.waiting", strconv.Itoa(len(RiakPool.WaitQueue))}
+	client, err := InitStatsite()
+	if err != nil {
+		goto Retry
+	}
+	_, err = client.Emit(msg)
 	if err != nil && retries <= 3 {
 		if err == io.ErrClosedPipe {
 			retries++
@@ -40,7 +68,7 @@ Retry:
 }
 
 func (req *Request) trackCmdsProcessed() {
-	if !req.statsEnabled {
+	if !StatsEnabled {
 		return
 	}
 	retries := 0
@@ -58,7 +86,7 @@ Retry:
 }
 
 func (req *Request) trackLatency(startTime, endTime time.Time) {
-	if !req.statsEnabled {
+	if !StatsEnabled {
 		return
 	}
 	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)

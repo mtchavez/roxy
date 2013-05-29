@@ -25,15 +25,6 @@ func init() {
 }
 
 func main() {
-	// config := flag.String("config", "./roxy/config.toml", "Path to config file")
-
-	// flag.Usage = func() {
-	// 	log.Printf("Usage %s [OPTIONS] [name ...]\n", os.Args[0])
-	// 	flag.PrintDefaults()
-	// }
-	// flag.Parse()
-	// checkConfig(*config)
-	// roxy.Setup(*config)
 	roxy.RunProxy()
 }
 

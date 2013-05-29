@@ -8,6 +8,7 @@ import (
 )
 
 var TotalClients = 0
+var StatsEnabled = false
 
 func roxyServerString() string {
 	roxy_ip := Configuration.Doc.GetString("roxy.ip", "127.0.0.1")
@@ -19,6 +20,7 @@ func Setup(configpath string) {
 	ParseConfig(configpath)
 	runtime.GOMAXPROCS(8)
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
+	StatsEnabled = Configuration.Doc.GetBool("roxy.statsite", false)
 	FillPool(poolSize)
 	go StatPoller()
 }
@@ -33,7 +35,6 @@ func RunProxy() {
 
 	defer func() {
 		listenerConn.Close()
-		TotalClients--
 	}()
 	for {
 		conn, err := listenerConn.Accept()
@@ -42,7 +43,6 @@ func RunProxy() {
 			continue
 		}
 		TotalClients++
-		log.Printf("\t\t>>>>>>>>>> << Listener Conection Accepted >>")
 		go RequestHandler(conn)
 	}
 }

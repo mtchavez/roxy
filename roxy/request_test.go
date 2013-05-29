@@ -10,9 +10,6 @@ func (s *MySuite) TestValidRequest(c *C) {
 	var in chan []byte
 	c.Assert(req.ReadIn, FitsTypeOf, in)
 
-	var quit chan bool
-	c.Assert(req.Quit, FitsTypeOf, quit)
-
 	var shared []byte
 	c.Assert(req.SharedBuffer, FitsTypeOf, shared)
 
