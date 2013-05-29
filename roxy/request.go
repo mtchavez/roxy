@@ -99,12 +99,8 @@ func (req *Request) HandleIncoming(incomming []byte) {
 ReWrite:
 	_, err := rconn.Conn.Write(incomming)
 	if err != nil {
-		// log.Println("Error writing to Riak: ", err)
-		// req.Write([]byte{0, 0, 0, 0})
-		// rconn.Release()
-		// return
 		rconn.Conn.Close()
-		time.Sleep(100)
+		time.Sleep(10)
 		rconn.ReDialConn()
 
 		log.Println("Rewrite")
