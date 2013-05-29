@@ -5,7 +5,6 @@ import (
 	"github.com/mtchavez/roxy/roxy"
 	"log"
 	"os"
-	"runtime"
 )
 
 func init() {
@@ -17,11 +16,7 @@ func init() {
 	}
 	flag.Parse()
 	checkConfig(*config)
-	roxy.ParseConfig(*config)
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	poolSize := roxy.Configuration.Doc.GetInt("riak.pool_size", 5)
-	roxy.FillPool(poolSize)
-	go roxy.StatPoller()
+	roxy.Setup(*config)
 }
 
 func main() {

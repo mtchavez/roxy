@@ -18,7 +18,7 @@ func roxyServerString() string {
 
 func Setup(configpath string) {
 	ParseConfig(configpath)
-	runtime.GOMAXPROCS(8)
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	StatsEnabled = Configuration.Doc.GetBool("roxy.statsite", false)
 	FillPool(poolSize)
