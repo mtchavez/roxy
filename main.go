@@ -18,7 +18,7 @@ func init() {
 	flag.Parse()
 	checkConfig(*config)
 	roxy.ParseConfig(*config)
-	runtime.GOMAXPROCS(8)
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := roxy.Configuration.Doc.GetInt("riak.pool_size", 5)
 	roxy.FillPool(poolSize)
 	go roxy.StatPoller()
