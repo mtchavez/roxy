@@ -2,6 +2,8 @@ package roxy
 
 import (
 	. "launchpad.net/gocheck"
+	"net"
+	"time"
 )
 
 func (s *MySuite) TestValidRequest(c *C) {
@@ -43,4 +45,14 @@ func (s *MySuite) TestLargerMsgCheckBufferSize(c *C) {
 	c.Assert(req.SharedBuffer, HasLen, 4)
 	req.checkBufferSize(8)
 	c.Assert(req.SharedBuffer, HasLen, 24)
+}
+
+func (s *MySuite) TestMakingRequest(c *C) {
+	c.SucceedNow()
+	Setup("./config.toml")
+	go RunProxy()
+	time.Sleep(500 * time.Millisecond)
+	conn, _ := net.Dial("tcp", "127.0.0.1:8088")
+	ping := []byte{0, 0, 0, 1, 1}
+	conn.Write(ping)
 }

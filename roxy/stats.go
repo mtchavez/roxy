@@ -39,14 +39,14 @@ func trackTotalClients() {
 Retry:
 	msg := &statsite.CountMsg{"roxy.clients.total", strconv.Itoa(TotalClients)}
 	client, err := InitStatsite()
-	if err != nil {
+	if err != nil && retries <= 3 {
+		retries++
 		goto Retry
 	}
 	_, err = client.Emit(msg)
 	if err != nil && retries <= 3 {
 		if err == io.ErrClosedPipe {
 			retries++
-			InitStatsite()
 			goto Retry
 		}
 
@@ -62,14 +62,14 @@ func trackWaitQueueSize() {
 Retry:
 	msg := &statsite.CountMsg{"roxy.requests.waiting", strconv.Itoa(len(RiakPool.WaitQueue))}
 	client, err := InitStatsite()
-	if err != nil {
+	if err != nil && retries <= 3 {
+		retries++
 		goto Retry
 	}
 	_, err = client.Emit(msg)
 	if err != nil && retries <= 3 {
 		if err == io.ErrClosedPipe {
 			retries++
-			InitStatsite()
 			goto Retry
 		}
 

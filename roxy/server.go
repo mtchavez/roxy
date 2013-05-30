@@ -62,6 +62,7 @@ func (s *Server) Listen() {
 	for {
 		select {
 		case <-Shutdown:
+			log.Println("Listener Shutdown")
 			s.closeConnections()
 			return
 		default:
