@@ -2,7 +2,6 @@ package roxy
 
 import (
 	. "launchpad.net/gocheck"
-	"runtime"
 )
 
 func (s *MySuite) TestRoxyServerString(c *C) {
@@ -17,7 +16,5 @@ func (s *MySuite) TestBadSetup(c *C) {
 
 func (s *MySuite) TestGoodSetup(c *C) {
 	Setup("./config.toml")
-	maxProcs := runtime.GOMAXPROCS(0)
-	c.Assert(maxProcs, Equals, 8)
 	c.Assert(RiakPool.ConnQueue, HasLen, 5)
 }

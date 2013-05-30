@@ -18,7 +18,7 @@ type Server struct {
 var RoxyServer = Server{}
 var TotalClients = 0
 var StatsEnabled = false
-var Shutdown = make(chan bool, 2)
+var Shutdown = make(chan bool, 5)
 var statsClosed = make(chan bool)
 
 func roxyServerString() string {
@@ -33,7 +33,9 @@ func Setup(configpath string) {
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
 	FillPool(poolSize)
-	go StatPoller()
+	if StatsEnabled {
+		go StatPoller()
+	}
 }
 
 func RunProxy() {
@@ -52,7 +54,9 @@ func RunProxy() {
 func (s *Server) Listen() {
 	defer func() {
 		s.ListenerConn.Close()
-		<-statsClosed
+		if StatsEnabled {
+			<-statsClosed
+		}
 	}()
 	checkForTrapSig()
 	for {
@@ -82,6 +86,12 @@ func (s *Server) closeConnections() {
 	s.Conns = make(map[net.Conn]int, 0)
 }
 
+func (s *Server) Shutdown() {
+	Shutdown <- true
+	Shutdown <- true
+	RoxyServer.ListenerConn.Close()
+}
+
 func checkForTrapSig() {
 	// trap signal
 	sch := make(chan os.Signal, 10)
@@ -91,8 +101,7 @@ func checkForTrapSig() {
 		select {
 		case sig := <-ch:
 			log.Print("signal recieved " + sig.String())
-			Shutdown <- true
-			Shutdown <- true
+			RoxyServer.Shutdown()
 		}
 	}(sch)
 }

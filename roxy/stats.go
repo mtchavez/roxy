@@ -21,7 +21,6 @@ func StatPoller() {
 		case <-Shutdown:
 			// Close Listener incase it is stuck
 			// waiting to Accept() a new connection
-			RoxyServer.ListenerConn.Close()
 			statsClosed <- true
 			return
 		default:
