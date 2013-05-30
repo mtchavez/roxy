@@ -91,6 +91,7 @@ func (req *Request) Write(buffer []byte) {
 func (req *Request) Close() {
 	close(req.ReadIn)
 	req.Conn.Close()
+	delete(RoxyServer.Conns, req.Conn)
 	TotalClients--
 }
 

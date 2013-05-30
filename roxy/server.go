@@ -3,12 +3,23 @@ package roxy
 import (
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
+	"syscall"
 )
 
+type Server struct {
+	ListenerConn net.Listener
+	Conns        map[net.Conn]int
+}
+
+var RoxyServer = Server{}
 var TotalClients = 0
 var StatsEnabled = false
+var Shutdown = make(chan bool, 2)
+var statsClosed = make(chan bool)
 
 func roxyServerString() string {
 	roxy_ip := Configuration.Doc.GetString("roxy.ip", "127.0.0.1")
@@ -33,16 +44,55 @@ func RunProxy() {
 		return
 	}
 
+	RoxyServer.Conns = make(map[net.Conn]int, 0)
+	RoxyServer.ListenerConn = listenerConn
+	RoxyServer.Listen()
+}
+
+func (s *Server) Listen() {
 	defer func() {
-		listenerConn.Close()
+		s.ListenerConn.Close()
+		<-statsClosed
 	}()
+	checkForTrapSig()
 	for {
-		conn, err := listenerConn.Accept()
-		if err != nil {
-			log.Println("Connection error: ", err)
-			continue
+		select {
+		case <-Shutdown:
+			s.closeConnections()
+			return
+		default:
+			conn, err := s.ListenerConn.Accept()
+			if err != nil {
+				log.Println("Connection error: ", err)
+			} else {
+				TotalClients++
+				s.Conns[conn] = TotalClients
+				go RequestHandler(conn)
+			}
 		}
-		TotalClients++
-		go RequestHandler(conn)
 	}
+}
+
+func (s *Server) closeConnections() {
+	for conn, _ := range s.Conns {
+		conn.Close()
+		TotalClients--
+		delete(s.Conns, conn)
+	}
+	s.Conns = make(map[net.Conn]int, 0)
+}
+
+func checkForTrapSig() {
+	// trap signal
+	sch := make(chan os.Signal, 10)
+	signal.Notify(sch, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGINT,
+		syscall.SIGHUP, syscall.SIGSTOP, syscall.SIGQUIT)
+	go func(ch chan os.Signal) {
+		select {
+		case sig := <-ch:
+			log.Print("signal recieved " + sig.String())
+			Shutdown <- true
+			Shutdown <- true
+		}
+	}(sch)
 }

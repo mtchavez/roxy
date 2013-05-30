@@ -17,9 +17,18 @@ func InitStatsite() (client *statsite.Client, err error) {
 
 func StatPoller() {
 	for {
-		time.Sleep(10 * time.Second)
-		go trackWaitQueueSize()
-		go trackTotalClients()
+		select {
+		case <-Shutdown:
+			// Close Listener incase it is stuck
+			// waiting to Accept() a new connection
+			RoxyServer.ListenerConn.Close()
+			statsClosed <- true
+			return
+		default:
+			time.Sleep(10 * time.Second)
+			trackWaitQueueSize()
+			trackTotalClients()
+		}
 	}
 }
 
