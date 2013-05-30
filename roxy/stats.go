@@ -9,13 +9,15 @@ import (
 )
 
 func InitStatsite() (client *statsite.Client, err error) {
-	return statsite.NewClient("0.0.0.0:8125")
+	ip := Configuration.Doc.GetString("statsite.ip", "0.0.0.0")
+	port := Configuration.Doc.GetInt("statsite.port", 8125)
+	addr := ip + ":" + strconv.Itoa(port)
+	return statsite.NewClient(addr)
 }
 
 func StatPoller() {
 	for {
 		time.Sleep(10 * time.Second)
-		log.Println("WaitSize: ", len(RiakPool.WaitQueue))
 		go trackWaitQueueSize()
 		go trackTotalClients()
 	}

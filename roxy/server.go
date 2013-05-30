@@ -20,7 +20,7 @@ func Setup(configpath string) {
 	ParseConfig(configpath)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
-	StatsEnabled = Configuration.Doc.GetBool("roxy.statsite", false)
+	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
 	FillPool(poolSize)
 	go StatPoller()
 }
