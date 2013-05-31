@@ -1,6 +1,7 @@
 package roxy
 
 import (
+	"code.google.com/p/goprotobuf/proto"
 	"log"
 	"net"
 	"os"
@@ -27,13 +28,30 @@ func roxyServerString() string {
 	return roxy_ip + ":" + strconv.Itoa(roxy_port)
 }
 
+func setupErrorResp() {
+	errPb := &RpbErrorResp{
+		Errmsg:  []byte("Error talking to Riak"),
+		Errcode: proto.Uint32(1),
+	}
+	data, err := proto.Marshal(errPb)
+	if err != nil {
+		log.Fatal("marshaling error: ", err)
+	}
+	ErrorResp = append([]byte{0, 0, 0, byte(len(data) + 1), 0}, data...)
+}
+
 func Setup(configpath string) {
+	setupErrorResp()
 	ParseConfig(configpath)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
 	FillPool(poolSize)
 	if StatsEnabled {
+		c, err := InitStatsite()
+		if err == nil {
+			StatsiteClient = c
+		}
 		go StatPoller()
 	}
 }

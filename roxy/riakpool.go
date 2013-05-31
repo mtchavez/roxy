@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
@@ -102,10 +103,18 @@ func FillPool(num int) {
 }
 
 func (rconn *RiakConn) ReDialConn() {
+	// log.Println("[[[[[[[[[[[[[Re-Dialing The Riak]]]]]]]]]]]]]]")
 	serverString := riakServerString()
+	tries := 0
+ReDial:
+	if tries >= 5 {
+		return
+	}
 	conn, err := dialServer(serverString)
 	if err != nil {
-		return
+		tries++
+		time.Sleep(5 * time.Second)
+		goto ReDial
 	}
 	rconn.Conn = conn
 }

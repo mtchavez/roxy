@@ -15,9 +15,6 @@ func (s *MySuite) TestValidRequest(c *C) {
 	var shared []byte
 	c.Assert(req.SharedBuffer, FitsTypeOf, shared)
 
-	var length []byte
-	c.Assert(req.LengthBuffer, FitsTypeOf, length)
-
 	c.Assert(req.bytesRead, FitsTypeOf, int(0))
 }
 

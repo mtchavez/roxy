@@ -1,6 +1,8 @@
 package roxy
 
 var MapRedDone []byte = []byte{0, 0, 0, 3, 24, 24, 1}
+var PingResp []byte = []byte{0, 0, 0, 1, 2}
+var ErrorResp []byte
 
 var commandToNum = map[string]byte{
 	"RpbErrorResp":         0,
