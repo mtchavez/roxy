@@ -1,6 +1,7 @@
 package roxy
 
 import (
+	"bytes"
 	. "launchpad.net/gocheck"
 	"net"
 	"time"
@@ -9,13 +10,11 @@ import (
 func (s *MySuite) TestValidRequest(c *C) {
 	req := &Request{}
 
-	var in chan []byte
+	var in chan bool
 	c.Assert(req.ReadIn, FitsTypeOf, in)
 
-	var shared []byte
+	var shared *bytes.Buffer
 	c.Assert(req.SharedBuffer, FitsTypeOf, shared)
-
-	c.Assert(req.bytesRead, FitsTypeOf, int(0))
 }
 
 func (s *MySuite) TestParseMessageLength(c *C) {
@@ -29,19 +28,19 @@ func (s *MySuite) TestParseMessageLength(c *C) {
 }
 
 func (s *MySuite) TestSmallerMsgCheckBufferSize(c *C) {
-	buffer := make([]byte, 16)
+	buffer := bytes.NewBuffer(make([]byte, 16))
 	req := &Request{SharedBuffer: buffer}
-	c.Assert(req.SharedBuffer, HasLen, 16)
+	c.Assert(req.SharedBuffer.Bytes(), HasLen, 16)
 	req.checkBufferSize(8)
-	c.Assert(req.SharedBuffer, HasLen, 16)
+	c.Assert(req.SharedBuffer.Bytes(), HasLen, 16)
 }
 
 func (s *MySuite) TestLargerMsgCheckBufferSize(c *C) {
-	buffer := make([]byte, 4)
+	buffer := bytes.NewBuffer(make([]byte, 4))
 	req := &Request{SharedBuffer: buffer}
-	c.Assert(req.SharedBuffer, HasLen, 4)
+	c.Assert(cap(req.SharedBuffer.Bytes()), Equals, 4)
 	req.checkBufferSize(8)
-	c.Assert(req.SharedBuffer, HasLen, 24)
+	c.Assert(cap(req.SharedBuffer.Bytes())+req.SharedBuffer.Len(), Equals, 24)
 }
 
 func (s *MySuite) TestMakingRequest(c *C) {
