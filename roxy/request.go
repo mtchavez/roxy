@@ -54,9 +54,9 @@ func (req *Request) checkBufferSize(msglen int) {
 	req.SharedBuffer.Grow(msglen + 4)
 }
 
-func (req *Request) Read() (err error) {
-	var readIn int = 0
+func (req *Request) ReadInLengthBuffer() (err error) {
 	var b int = 0
+	readIn := 0
 	req.msgLen = 0
 ReadLen:
 	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
@@ -73,9 +73,16 @@ ReadLen:
 	if readIn < 4 {
 		goto ReadLen
 	}
-	var bytesRead int = 0
-	b = 0
 	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
+	return
+}
+
+func (req *Request) Read() (err error) {
+	err = req.ReadInLengthBuffer()
+	if err != nil {
+		return
+	}
+	var bytesRead, b int = 0, 0
 	req.checkBufferSize(req.msgLen)
 	for {
 		if bytesRead >= req.msgLen {
