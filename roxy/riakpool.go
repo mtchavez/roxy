@@ -18,6 +18,9 @@ var poolcc = make([]*RiakConn, 5)
 var poolwq = make([]chan *RiakConn, 0)
 var poolm = &sync.Mutex{}
 
+// Struct for a Pool that contains a stack of Riak connections
+// and a WaitQueue that is used when no Riak connections are
+// available.
 type Pool struct {
 	index     int
 	ConnQueue []*RiakConn
@@ -25,6 +28,7 @@ type Pool struct {
 	m         *sync.Mutex
 }
 
+// Struct to hold a connection to Riak and an internal BUSY or SLEEPING status
 type RiakConn struct {
 	Conn   *net.TCPConn
 	Status int
@@ -37,6 +41,9 @@ var RiakPool = Pool{
 	m:         poolm,
 }
 
+// Pushes a RiakConn back onto the stack.
+// If there is anything in the WaitQueue the RiakConn is sent over a
+// channel to the next waiting request instead of being pushed onto the stack.
 func (p *Pool) Push(rconn *RiakConn) (bool, error) {
 	p.m.Lock()
 	if len(p.WaitQueue) > 0 {
@@ -52,6 +59,9 @@ func (p *Pool) Push(rconn *RiakConn) (bool, error) {
 	return true, nil
 }
 
+// Pops a RiakConn off the stack and returns it.
+// If the stack is empty a channel is made and listens for a RiakConn
+// to be sent when one becomes available.
 func (p *Pool) Pop() (*RiakConn, error) {
 	p.m.Lock()
 	if p.index > 0 {
@@ -76,15 +86,19 @@ func (rconn *RiakConn) String() string {
 	return ""
 }
 
+// Sets RiakConn status to BUSY
 func (rconn *RiakConn) Lock() {
 	rconn.Status = BUSY
 }
 
+// Sets RiakConn status to SLEEPING and pushes it back onto the stack
 func (rconn *RiakConn) Release() {
 	rconn.Status = SLEEPING
 	RiakPool.Push(rconn)
 }
 
+// FillPool takes in a number of connections to make to Riak and
+// make available on the stack of Riak connections
 func FillPool(num int) {
 	if num <= 0 {
 		num = 5
@@ -102,8 +116,9 @@ func FillPool(num int) {
 	}
 }
 
+// Dials Riak and saves returned connection onto a RiakConn.
+// This will try to connect to Riak up to 5 times
 func (rconn *RiakConn) ReDialConn() {
-	// log.Println("[[[[[[[[[[[[[Re-Dialing The Riak]]]]]]]]]]]]]]")
 	serverString := riakServerString()
 	tries := 0
 ReDial:
@@ -119,6 +134,7 @@ ReDial:
 	rconn.Conn = conn
 }
 
+// Convenience method to retun next RiakConn from stack
 func GetRiakConn() (rconn *RiakConn) {
 	var err error
 	rconn, err = RiakPool.Pop()
@@ -128,6 +144,9 @@ func GetRiakConn() (rconn *RiakConn) {
 	return
 }
 
+// Given an address to Riak this will resolve that address
+// and attempt to get connection to Riak. If successful
+// a net.TCPConn is returned with no error otherwise an error will be returned
 func dialServer(server string) (conn *net.TCPConn, err error) {
 	var tcpaddr *net.TCPAddr
 	tcpaddr, err = net.ResolveTCPAddr("tcp", server)
