@@ -9,6 +9,8 @@ import (
 
 var StatsiteClient *statsite.Client
 
+// Initializes a statsite client based on the toml config file
+// Returns a statsite.Client and an error
 func InitStatsite() (client *statsite.Client, err error) {
 	ip := Configuration.Doc.GetString("statsite.ip", "0.0.0.0")
 	port := Configuration.Doc.GetInt("statsite.port", 8125)
@@ -20,6 +22,11 @@ func InitStatsite() (client *statsite.Client, err error) {
 	return
 }
 
+// A statsite poller to track stats every 10 seconds.
+// Currently tracks the size of the WaitQueue on RiakPool,
+// and the total clients connected to Roxy
+//
+// StatPoller can be shutdown by sending true to the Shutdown channel
 func StatPoller() {
 	for {
 		select {
