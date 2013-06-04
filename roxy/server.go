@@ -11,6 +11,8 @@ import (
 	"syscall"
 )
 
+// Server holds the connection for the Roxy net.Listener and
+// a map of all the active connections
 type Server struct {
 	ListenerConn net.Listener
 	Conns        map[net.Conn]int
@@ -40,6 +42,15 @@ func setupErrorResp() {
 	ErrorResp = append([]byte{0, 0, 0, byte(len(data) + 1), 0}, data...)
 }
 
+// Setup takes a path to a config toml file to initialize Roxy.
+// This will parse the config file, set GOMAXPROCS, initialize
+// a pool for Riak connections based on config and optionally
+// initialize a Statsite connection if turned on in config.
+//
+// For example:
+//
+//		roxy.Setup("./my-config.toml")
+//
 func Setup(configpath string) {
 	setupErrorResp()
 	ParseConfig(configpath)
@@ -56,6 +67,9 @@ func Setup(configpath string) {
 	}
 }
 
+// RunProxy will use config to set up a listener on the supplied
+// ip and port for Roxy. If successful then Roxy will be running and
+// listening for incomming connection.
 func RunProxy() {
 	server_string := roxyServerString()
 	listenerConn, netErr := net.Listen("tcp", server_string)
@@ -69,6 +83,9 @@ func RunProxy() {
 	RoxyServer.Listen()
 }
 
+// Listen will listen to a Server net.Listener until a message
+// is sent on the Shutdown channel. When Shutdown is sent any
+// active connections will be closed and the listener will be closed.
 func (s *Server) Listen() {
 	defer func() {
 		s.ListenerConn.Close()
@@ -96,6 +113,7 @@ func (s *Server) Listen() {
 	}
 }
 
+// Server function to close all active connections to Roxy
 func (s *Server) closeConnections() {
 	for conn, _ := range s.Conns {
 		conn.Close()
@@ -105,6 +123,8 @@ func (s *Server) closeConnections() {
 	s.Conns = make(map[net.Conn]int, 0)
 }
 
+// Convenience method for a Server to shut itself down
+// If statsite is enabled a Shutdown message is sent to it as well.
 func (s *Server) Shutdown() {
 	Shutdown <- true
 	if StatsEnabled {
@@ -112,6 +132,8 @@ func (s *Server) Shutdown() {
 	}
 }
 
+// Traps signals sent to Roxy so that it can gracefully shut down
+// and close active connections.
 func checkForTrapSig() {
 	// trap signal
 	sch := make(chan os.Signal, 10)
