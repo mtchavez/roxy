@@ -111,9 +111,7 @@ func (req *Request) Close() {
 	TotalClients--
 }
 
-func (req *Request) HandleIncoming() {
-	rconn := GetRiakConn()
-	defer rconn.Release()
+func (req *Request) RiakWrite(rconn *RiakConn) error {
 ReWrite:
 	rconn.Conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, err := rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
@@ -125,9 +123,11 @@ ReWrite:
 
 		goto ReWrite
 	}
-Receive:
-	var readIn int = 0
-	var b int = 0
+	return err
+}
+
+func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
+	var readIn, b int = 0, 0
 	retries := 0
 ReadLen:
 	req.msgLen = 0
@@ -145,15 +145,17 @@ ReadLen:
 		time.Sleep(10)
 		rconn.ReDialConn()
 		req.Close()
-		return
+		return err
 	}
 	readIn += b
 	if readIn < 4 {
 		goto ReadLen
 	}
-	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
-	req.checkBufferSize(req.msgLen)
-	var bytesRead int = 0
+	return err
+}
+
+func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
+	var bytesRead, b int = 0, 0
 	for {
 		if bytesRead >= req.msgLen {
 			break
@@ -174,12 +176,49 @@ ReadLen:
 		}
 		bytesRead += b
 	}
+	return
+}
+
+func (req *Request) HandleIncoming() {
+	rconn := GetRiakConn()
+	defer rconn.Release()
+	var err error
+
+	// Write client request to Riak
+	err = req.RiakWrite(rconn)
+	if err != nil {
+		req.Write(ErrorResp)
+		req.Close()
+		return
+	}
+
+	// Read/Receive response from Riak
+Receive:
+
+	// Read in buffer to determine messag length
+	err = req.ReadRiakLenBuff(rconn)
+	if err != nil {
+		return
+	}
+	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
+	req.checkBufferSize(req.msgLen)
+
+	// Read full message from Riak
+	err = req.RiakRecvResp(rconn)
+	if err != nil {
+		return
+	}
+
+	// Write Riak response to client
 	startTime := time.Now()
 	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	endTime := time.Now()
 
 	go req.trackLatency(startTime, endTime)
 	go req.trackCmdsProcessed()
+
+	// Go back to Receive to continually read responses
+	// from Riak. Happens when doing a map reduce
 	cmd := req.SharedBuffer.Bytes()[4]
 	if cmd == commandToNum["RpbMapRedResp"] &&
 		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
