@@ -4,7 +4,6 @@ import (
 	"bytes"
 	. "launchpad.net/gocheck"
 	"net"
-	"time"
 )
 
 func (s *MySuite) TestValidRequest(c *C) {
@@ -47,7 +46,6 @@ func (s *MySuite) TestMakingRequest(c *C) {
 	RoxyServer = Server{}
 	Setup("./config.toml")
 	go RunProxy()
-	time.Sleep(500 * time.Millisecond)
 	conn, _ := net.Dial("tcp", "127.0.0.1:8088")
 	ping := []byte{0, 0, 0, 1, 1}
 	conn.Write(ping)

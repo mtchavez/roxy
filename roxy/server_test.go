@@ -3,7 +3,6 @@ package roxy
 import (
 	"github.com/mtchavez/go-statsite/statsite"
 	. "launchpad.net/gocheck"
-	"time"
 )
 
 func (s *MySuite) TestRoxyServerString(c *C) {
@@ -34,6 +33,5 @@ func (s *MySuite) TestShutdown(c *C) {
 	RoxyServer = Server{}
 	Setup("./config.toml")
 	go RunProxy()
-	time.Sleep(500 * time.Millisecond)
 	RoxyServer.Shutdown()
 }
