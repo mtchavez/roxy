@@ -9,17 +9,16 @@ import (
 
 func init() {
 	config := flag.String("config", "./roxy/config.toml", "Path to config file")
+	version := flag.Bool("v", true, "prints current roxy version")
 	flag.Usage = func() {
 		fmt.Printf("Usage %s [OPTIONS] [name ...]\n", os.Args[0])
 		fmt.Printf("version or v: Prints current roxy version\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	for _, arg := range flag.Args() {
-		if arg == "v" || arg == "version" {
-			fmt.Println("Current version is ", roxy.VERSION)
-			os.Exit(0)
-		}
+	if *version {
+		fmt.Println(roxy.VERSION)
+		os.Exit(0)
 	}
 	checkConfig(*config)
 	roxy.Setup(*config)
