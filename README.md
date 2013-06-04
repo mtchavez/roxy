@@ -81,7 +81,8 @@ for i in xrange(1, 10):
 
 ## Documentation
 
-Docs can be found on [godoc](http://godoc.org/github.com/mtchavez/roxy)
+Docs can be found on [godoc](http://godoc.org/github.com/mtchavez/roxy) or
+run ```go doc github.com/mtchavez/roxy``` locally
 
 ## Test
 
