@@ -62,7 +62,6 @@ ReadLen:
 	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
 	if err != nil {
 		if err != io.EOF {
-			// log.Println("Failed to read: ", err)
 			req.Close()
 		}
 		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
@@ -74,7 +73,6 @@ ReadLen:
 	if readIn < 4 {
 		goto ReadLen
 	}
-	// log.Println("BytesRead: ", req.SharedBuffer.Bytes()[:4])
 	var bytesRead int = 0
 	b = 0
 	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
@@ -93,47 +91,33 @@ ReadLen:
 		}
 		bytesRead += b
 	}
-	// log.Println("Read: ", numToCommand[int(req.SharedBuffer.Bytes()[4])])
-	// log.Println("MSGLEN = ", req.msgLen)
 	return
 }
 
 func (req *Request) Write(buffer []byte) {
-	// log.Println("WRITING TO CLIENT: ", buffer)
 	req.Conn.Write(buffer)
 }
 
 func (req *Request) Close() {
-	// _, ok := <-req.ReadIn
-	// if ok {
-	// 	close(req.ReadIn)
-	// }
 	req.Conn.Close()
 	delete(RoxyServer.Conns, req.Conn)
 	TotalClients--
-	// log.Println("CLOSING CONNECTION")
 }
 
 func (req *Request) HandleIncoming() {
-	// log.Println("GET RIAK CONN")
 	rconn := GetRiakConn()
-	// log.Println("OBTAINED A RIAK CONNECTION")
 	defer rconn.Release()
 ReWrite:
-	// log.Println("Trying to write")
 	rconn.Conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, err := rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
-	// log.Println("Wrote")
 	if err != nil {
 		log.Println("Errored writing to Riak")
 		rconn.Conn.Close()
 		time.Sleep(10)
 		rconn.ReDialConn()
 
-		// log.Println("Rewrite")
 		goto ReWrite
 	}
-	// log.Println("Wrote: ", req.SharedBuffer.Bytes()[:req.msgLen+4])
 Receive:
 	var readIn int = 0
 	var b int = 0
@@ -161,7 +145,6 @@ ReadLen:
 		goto ReadLen
 	}
 	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
-	// log.Println("RiakResp Msg Len: ", req.msgLen)
 	req.checkBufferSize(req.msgLen)
 	var bytesRead int = 0
 	for {
@@ -172,11 +155,9 @@ ReadLen:
 		if err != nil {
 			nerr, ok := err.(net.Error)
 			if err != io.EOF && ok && nerr.Temporary() {
-				// log.Println("Temp Error!")
 				time.Sleep(300 * time.Millisecond)
 				continue
 			}
-			// log.Println("Returning??????")
 			req.Write(ErrorResp)
 			rconn.Conn.Close()
 			time.Sleep(10)
@@ -186,12 +167,10 @@ ReadLen:
 		}
 		bytesRead += b
 	}
-	// log.Println("Recieved: ", numToCommand[int(req.SharedBuffer.Bytes()[4])])
 	startTime := time.Now()
 	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	endTime := time.Now()
-	// log.Println("Riak Response: ", req.SharedBuffer.Bytes()[:req.msgLen+4])
-	// log.Println("Riak RespMsg: ", numToCommand[int(req.SharedBuffer.Bytes()[4])])
+
 	go req.trackLatency(startTime, endTime)
 	go req.trackCmdsProcessed()
 	cmd := req.SharedBuffer.Bytes()[4]
@@ -213,9 +192,7 @@ func (req *Request) Reader() {
 func (req *Request) Sender() {
 	for _ = range req.ReadIn {
 		code := req.SharedBuffer.Bytes()[4]
-		// log.Println("CODE: ", code)
 		if code == commandToNum["RpbPingReq"] {
-			// log.Println("<<<<<<<QUICK PING RESP>>>>>>>>")
 			req.Write(PingResp)
 		} else {
 			req.HandleIncoming()

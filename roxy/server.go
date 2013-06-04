@@ -107,8 +107,9 @@ func (s *Server) closeConnections() {
 
 func (s *Server) Shutdown() {
 	Shutdown <- true
-	Shutdown <- true
-	RoxyServer.ListenerConn.Close()
+	if StatsEnabled {
+		Shutdown <- true
+	}
 }
 
 func checkForTrapSig() {

@@ -44,11 +44,14 @@ func (s *MySuite) TestLargerMsgCheckBufferSize(c *C) {
 }
 
 func (s *MySuite) TestMakingRequest(c *C) {
-	c.SucceedNow()
+	RoxyServer = Server{}
 	Setup("./config.toml")
 	go RunProxy()
 	time.Sleep(500 * time.Millisecond)
 	conn, _ := net.Dial("tcp", "127.0.0.1:8088")
 	ping := []byte{0, 0, 0, 1, 1}
 	conn.Write(ping)
+	buff := make([]byte, 5)
+	conn.Read(buff)
+	c.Assert(buff, DeepEquals, []byte{0, 0, 0, 1, 2})
 }

@@ -1,6 +1,7 @@
 package roxy
 
 import (
+	"github.com/mtchavez/go-statsite/statsite"
 	. "launchpad.net/gocheck"
 	"time"
 )
@@ -18,10 +19,19 @@ func (s *MySuite) TestBadSetup(c *C) {
 func (s *MySuite) TestGoodSetup(c *C) {
 	Setup("./config.toml")
 	c.Assert(RiakPool.ConnQueue, HasLen, 5)
+	c.Assert(ErrorResp, HasLen, 30)
+}
+
+func (s *MySuite) TestStatsiteEnabledSetup(c *C) {
+	StatsEnabled = true
+	Setup("./config.toml")
+	c.Assert(StatsEnabled, Equals, false)
+	var st *statsite.Client
+	c.Assert(StatsiteClient, Equals, st)
 }
 
 func (s *MySuite) TestShutdown(c *C) {
-	c.SucceedNow()
+	RoxyServer = Server{}
 	Setup("./config.toml")
 	go RunProxy()
 	time.Sleep(500 * time.Millisecond)
