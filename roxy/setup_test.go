@@ -10,16 +10,17 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type MySuite struct{}
+type wrappedTest func(chan net.Conn)
 
 var _ = Suite(&MySuite{})
 
-func (s *MySuite) RunInProxy(fn func(net.Listener, chan net.Conn, chan bool)) {
+func (s *MySuite) RunInProxy(fn wrappedTest) {
 	ch := make(chan net.Conn, 1)
-	close := make(chan bool, 1)
-	listener := s.ProxyServer(ch, close)
-	fn(listener, ch, close)
+	cl := make(chan bool)
+	listener := s.ProxyServer(ch, cl)
+	fn(ch)
 	listener.Close()
-	close <- true
+	cl <- true
 }
 
 func (s *MySuite) ProxyServer(ch chan net.Conn, close chan bool) net.Listener {
