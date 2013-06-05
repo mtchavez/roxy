@@ -1,3 +1,13 @@
+## v0.2.0 (2013-06-05)
+
+* Fix version string parsing to default to false
+* Fix memory leak with go routines from RequestHandler not dying
+* Added backgroundwrite.go to handle
+  * Counting of background writes
+  * Writes up to a threshold in the background
+  * Quick put responses to client and writes in background now
+  * Put response is not the doc but is { "roxy": true }
+
 ## v0.1.0 (2013-06-04)
 
 * Toml config parsing

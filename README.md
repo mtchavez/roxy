@@ -92,9 +92,9 @@ and available on default pb port ```8087```
 
 ## TODO
 
-* Quick return on Saves
-  - Respond immediately to client
-  - Handle save in a Go routine
+* Enable setting threshold of writing in background
+  - Setting this to 0 would turn off quick put responses and background writing
+  - This would be needed for people who expect the saved doc back on a put request
 * Given a %95 for request times
   - Time out Riak requests if over %95 time
   - Re-try same request to Riak
