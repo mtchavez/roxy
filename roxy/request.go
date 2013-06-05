@@ -77,7 +77,8 @@ func (req *Request) Sender() {
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
 				req.Write(PutResp)
-				go BgWrites.sendPut(req.SharedBuffer, req.msgLen)
+				writeBuf := *req.SharedBuffer
+				go BgWrites.sendPut(&writeBuf, req.msgLen)
 			} else {
 				req.HandleIncoming()
 			}
