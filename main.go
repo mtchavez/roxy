@@ -9,7 +9,7 @@ import (
 
 func init() {
 	config := flag.String("config", "./roxy/config.toml", "Path to config file")
-	version := flag.Bool("v", true, "prints current roxy version")
+	version := flag.Bool("v", false, "prints current roxy version")
 	flag.Usage = func() {
 		fmt.Printf("Usage %s [OPTIONS] [name ...]\n", os.Args[0])
 		fmt.Printf("version or v: Prints current roxy version\n")

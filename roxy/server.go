@@ -16,6 +16,7 @@ import (
 type Server struct {
 	ListenerConn net.Listener
 	Conns        map[net.Conn]int
+	shuttingDown bool
 }
 
 var RoxyServer = Server{}
@@ -39,7 +40,36 @@ func setupErrorResp() {
 	if err != nil {
 		log.Fatal("marshaling error: ", err)
 	}
-	ErrorResp = append([]byte{0, 0, 0, byte(len(data) + 1), 0}, data...)
+	code := commandToNum["RpbErrorResp"]
+	ErrorResp = append([]byte{0, 0, 0, byte(len(data) + 1), byte(code)}, data...)
+}
+
+func setupPutResp() {
+	rpbContent := &RpbContent{
+		Value: []byte("{\"roxy\": true}"),
+	}
+	putPb := &RpbPutResp{
+		Content: []*RpbContent{rpbContent},
+	}
+	data, err := proto.Marshal(putPb)
+	if err != nil {
+		log.Fatal("RpbPutResp marshaling error: ", err)
+	}
+	code := commandToNum["RpbPutResp"]
+	PutResp = append([]byte{0, 0, 0, byte(len(data) + 1), byte(code)}, data...)
+}
+
+func setupServerInfoResp() {
+	infoPb := &RpbGetServerInfoResp{
+		Node:          []byte(""),
+		ServerVersion: []byte(VERSION),
+	}
+	data, err := proto.Marshal(infoPb)
+	if err != nil {
+		log.Fatal("RpbGetServerInfoResp marshaling error: ", err)
+	}
+	code := commandToNum["RpbGetServerInfoResp"]
+	ServerInfoResp = append([]byte{0, 0, 0, byte(len(data) + 1), code}, data...)
 }
 
 // Setup takes a path to a config toml file to initialize Roxy.
@@ -53,6 +83,8 @@ func setupErrorResp() {
 //
 func Setup(configpath string) {
 	setupErrorResp()
+	setupPutResp()
+	setupServerInfoResp()
 	ParseConfig(configpath)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
@@ -80,6 +112,7 @@ func RunProxy() {
 
 	RoxyServer.Conns = make(map[net.Conn]int, 0)
 	RoxyServer.ListenerConn = listenerConn
+	RoxyServer.shuttingDown = false
 	RoxyServer.Listen()
 }
 
@@ -88,7 +121,6 @@ func RunProxy() {
 // active connections will be closed and the listener will be closed.
 func (s *Server) Listen() {
 	defer func() {
-		s.ListenerConn.Close()
 		if StatsEnabled {
 			<-statsClosed
 		}
@@ -97,13 +129,15 @@ func (s *Server) Listen() {
 	for {
 		select {
 		case <-Shutdown:
-			log.Println("Listener Shutdown")
+			log.Println("Roxy listener has shut down")
 			s.closeConnections()
 			return
 		default:
 			conn, err := s.ListenerConn.Accept()
 			if err != nil {
-				log.Println("Connection error: ", err)
+				if !s.shuttingDown {
+					log.Println("Connection error: ", err)
+				}
 			} else {
 				TotalClients++
 				s.Conns[conn] = TotalClients
@@ -126,6 +160,8 @@ func (s *Server) closeConnections() {
 // Convenience method for a Server to shut itself down
 // If statsite is enabled a Shutdown message is sent to it as well.
 func (s *Server) Shutdown() {
+	s.shuttingDown = true
+	s.ListenerConn.Close()
 	Shutdown <- true
 	if StatsEnabled {
 		Shutdown <- true
@@ -142,7 +178,7 @@ func checkForTrapSig() {
 	go func(ch chan os.Signal) {
 		select {
 		case sig := <-ch:
-			log.Print("signal recieved " + sig.String())
+			log.Print("Roxy recieved " + sig.String())
 			RoxyServer.Shutdown()
 		}
 	}(sch)

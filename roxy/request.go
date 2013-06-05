@@ -19,6 +19,8 @@ type Request struct {
 	msgLen       int
 	statsEnabled bool
 	StatsClient  *statsite.Client
+	mapReducing  bool
+	responded    bool
 }
 
 // RequestHandler makes a new request for an incomming client connection.
@@ -32,6 +34,7 @@ func RequestHandler(conn net.Conn) {
 		ReadIn:       in,
 		SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
 		msgLen:       0,
+		responded:    false,
 	}
 	if StatsEnabled {
 		client, err := InitStatsite()
@@ -58,8 +61,18 @@ func (req *Request) Reader() {
 func (req *Request) Sender() {
 	for _ = range req.ReadIn {
 		code := req.SharedBuffer.Bytes()[4]
+		req.responded = false
+		if code == commandToNum["RpbMapRedReq"] {
+			req.mapReducing = true
+		}
 		if code == commandToNum["RpbPingReq"] {
 			req.Write(PingResp)
+		} else if code == commandToNum["RpbGetServerInfoReq"] {
+			req.Write(ServerInfoResp)
+		} else if !req.mapReducing && code == commandToNum["RpbPutReq"] {
+			req.Write(PutResp)
+			req.responded = true
+			req.HandleIncoming()
 		} else {
 			req.HandleIncoming()
 		}
@@ -122,6 +135,10 @@ func (req *Request) HandleIncoming() {
 		return
 	}
 
+	if req.responded {
+		req.responded = false
+		return
+	}
 	// Read/Receive response from Riak
 Receive:
 
@@ -154,6 +171,7 @@ Receive:
 		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
 		goto Receive
 	}
+	req.mapReducing = false
 }
 
 // Parses the message length from first 4 bytes of message
