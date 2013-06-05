@@ -20,7 +20,7 @@ type Request struct {
 	statsEnabled bool
 	StatsClient  *statsite.Client
 	mapReducing  bool
-	responded    bool
+	background   bool
 	closeReq     chan bool
 }
 
@@ -35,7 +35,7 @@ func RequestHandler(conn net.Conn) {
 		ReadIn:       in,
 		SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
 		msgLen:       0,
-		responded:    false,
+		background:   false,
 		closeReq:     make(chan bool, 1),
 	}
 	if StatsEnabled {
@@ -67,7 +67,7 @@ func (req *Request) Sender() {
 			return
 		case <-req.ReadIn:
 			code := req.SharedBuffer.Bytes()[4]
-			req.responded = false
+			req.background = false
 			req.mapReducing = (code == commandToNum["RpbMapRedReq"])
 			if code == commandToNum["RpbPingReq"] {
 				req.Write(PingResp)
@@ -160,7 +160,7 @@ Receive:
 	}
 
 	// Write Riak response to client
-	if !req.responded {
+	if !req.background {
 		startTime := time.Now()
 		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 		endTime := time.Now()
@@ -255,11 +255,13 @@ ReadLen:
 			goto ReadLen
 		}
 		log.Println("ERROR READING FROM RIAK: ", err)
-		req.Write(ErrorResp)
+		if !req.background {
+			req.Write(ErrorResp)
+			req.Close()
+		}
 		rconn.Conn.Close()
 		time.Sleep(10)
 		rconn.ReDialConn()
-		req.Close()
 		return err
 	}
 	readIn += b
@@ -284,11 +286,13 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 				time.Sleep(300 * time.Millisecond)
 				continue
 			}
-			req.Write(ErrorResp)
+			if !req.background {
+				req.Write(ErrorResp)
+				req.Close()
+			}
 			rconn.Conn.Close()
 			time.Sleep(10)
 			rconn.ReDialConn()
-			req.Close()
 			return
 		}
 		bytesRead += b

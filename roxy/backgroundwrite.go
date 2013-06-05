@@ -36,7 +36,7 @@ func (bg *BackgroundWrites) decrTotal() {
 // Write the RpbPutReq to riak, called in a Go routine from request.go
 func (bg *BackgroundWrites) sendPut(put *bytes.Buffer, msglen int) {
 	bg.incrTotal()
-	req := &Request{SharedBuffer: put, msgLen: msglen, responded: true}
+	req := &Request{SharedBuffer: put, msgLen: msglen, background: true}
 	req.HandleIncoming()
 	bg.decrTotal()
 }
