@@ -62,9 +62,7 @@ func (req *Request) Sender() {
 	for _ = range req.ReadIn {
 		code := req.SharedBuffer.Bytes()[4]
 		req.responded = false
-		if code == commandToNum["RpbMapRedReq"] {
-			req.mapReducing = true
-		}
+		req.mapReducing = (code == commandToNum["RpbMapRedReq"])
 		if code == commandToNum["RpbPingReq"] {
 			req.Write(PingResp)
 		} else if code == commandToNum["RpbGetServerInfoReq"] {
@@ -135,10 +133,11 @@ func (req *Request) HandleIncoming() {
 		return
 	}
 
-	if req.responded {
-		req.responded = false
-		return
-	}
+	// if req.responded {
+	// 	log.Println("Already Responded...Exiting request")
+	// 	req.responded = false
+	// 	return
+	// }
 	// Read/Receive response from Riak
 Receive:
 
@@ -157,17 +156,18 @@ Receive:
 	}
 
 	// Write Riak response to client
-	startTime := time.Now()
-	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
-	endTime := time.Now()
-
-	go req.trackLatency(startTime, endTime)
+	if !req.responded {
+		startTime := time.Now()
+		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+		endTime := time.Now()
+		go req.trackLatency(startTime, endTime)
+	}
 	go req.trackCmdsProcessed()
 
 	// Go back to Receive to continually read responses
 	// from Riak. Happens when doing a map reduce
-	cmd := req.SharedBuffer.Bytes()[4]
-	if cmd == commandToNum["RpbMapRedResp"] &&
+	// cmd := req.SharedBuffer.Bytes()[4]
+	if req.mapReducing &&
 		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
 		goto Receive
 	}
