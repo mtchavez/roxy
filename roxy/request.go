@@ -21,6 +21,7 @@ type Request struct {
 	StatsClient  *statsite.Client
 	mapReducing  bool
 	responded    bool
+	closeReq     chan bool
 }
 
 // RequestHandler makes a new request for an incomming client connection.
@@ -35,6 +36,7 @@ func RequestHandler(conn net.Conn) {
 		SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
 		msgLen:       0,
 		responded:    false,
+		closeReq:     make(chan bool, 1),
 	}
 	if StatsEnabled {
 		client, err := InitStatsite()
@@ -59,22 +61,28 @@ func (req *Request) Reader() {
 // Sender for a Request to listen on ReadIn channel sent from Reader().
 // Passes read in message to HandleIncoming()
 func (req *Request) Sender() {
-	for _ = range req.ReadIn {
-		code := req.SharedBuffer.Bytes()[4]
-		req.responded = false
-		req.mapReducing = (code == commandToNum["RpbMapRedReq"])
-		if code == commandToNum["RpbPingReq"] {
-			req.Write(PingResp)
-		} else if code == commandToNum["RpbGetServerInfoReq"] {
-			req.Write(ServerInfoResp)
-		} else if !req.mapReducing && code == commandToNum["RpbPutReq"] {
-			req.Write(PutResp)
-			req.responded = true
-			req.HandleIncoming()
-		} else {
-			req.HandleIncoming()
+	for {
+		select {
+		case <-req.closeReq:
+			return
+		case <-req.ReadIn:
+			code := req.SharedBuffer.Bytes()[4]
+			req.responded = false
+			req.mapReducing = (code == commandToNum["RpbMapRedReq"])
+			if code == commandToNum["RpbPingReq"] {
+				req.Write(PingResp)
+			} else if code == commandToNum["RpbGetServerInfoReq"] {
+				req.Write(ServerInfoResp)
+			} else if BgWrites.canProcess() &&
+				!req.mapReducing &&
+				code == commandToNum["RpbPutReq"] {
+				req.Write(PutResp)
+				go BgWrites.sendPut(req.SharedBuffer, req.msgLen)
+			} else {
+				req.HandleIncoming()
+			}
+			req.Reader()
 		}
-		req.Reader()
 	}
 }
 
@@ -90,6 +98,7 @@ func (req *Request) Close() {
 	req.Conn.Close()
 	delete(RoxyServer.Conns, req.Conn)
 	TotalClients--
+	req.closeReq <- true
 }
 
 // Read will read from client connection into the SharedBuffer for the Request
@@ -133,11 +142,6 @@ func (req *Request) HandleIncoming() {
 		return
 	}
 
-	// if req.responded {
-	// 	log.Println("Already Responded...Exiting request")
-	// 	req.responded = false
-	// 	return
-	// }
 	// Read/Receive response from Riak
 Receive:
 
