@@ -246,15 +246,15 @@ func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
 	retries := 0
 ReadLen:
 	req.msgLen = 0
-	rconn.Conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	rconn.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
 	if err != nil {
-		log.Println("ERROR READING FROM RIAK: ", err)
 		nerr, ok := err.(net.Error)
 		if retries <= 3 && err != io.EOF && ok && nerr.Temporary() {
 			retries++
 			goto ReadLen
 		}
+		log.Println("ERROR READING FROM RIAK: ", err)
 		req.Write(ErrorResp)
 		rconn.Conn.Close()
 		time.Sleep(10)
