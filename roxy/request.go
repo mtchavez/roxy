@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime"
 	"time"
 )
 
@@ -73,16 +74,16 @@ func (req *Request) Sender() {
 				req.Write(PingResp)
 			} else if code == commandToNum["RpbGetServerInfoReq"] {
 				req.Write(ServerInfoResp)
-			} else if BgWrites.canProcess() &&
+			} else if BgHandler.canProcess() &&
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
 				req.Write(PutResp)
-				writeBuf := *req.SharedBuffer
-				go BgWrites.sendPut(&writeBuf, req.msgLen)
+				BgHandler.queueToBg(req.SharedBuffer, req.msgLen)
 			} else {
 				req.HandleIncoming()
 			}
 			req.Reader()
+			runtime.GC()
 		}
 	}
 }
@@ -99,7 +100,9 @@ func (req *Request) Close() {
 	req.Conn.Close()
 	delete(RoxyServer.Conns, req.Conn)
 	TotalClients--
-	req.closeReq <- true
+	if !req.background {
+		req.closeReq <- true
+	}
 }
 
 // Read will read from client connection into the SharedBuffer for the Request
@@ -119,7 +122,9 @@ func (req *Request) Read() (err error) {
 			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
 				continue
 			}
-			req.Close()
+			if !req.background {
+				req.Close()
+			}
 			return
 		}
 		bytesRead += b
@@ -132,14 +137,18 @@ func (req *Request) Read() (err error) {
 // sends that response back to the client
 func (req *Request) HandleIncoming() {
 	rconn := GetRiakConn()
-	defer rconn.Release()
+	defer func() {
+		rconn.Release()
+	}()
 	var err error
 
 	// Write client request to Riak
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		req.Write(ErrorResp)
-		req.Close()
+		if !req.background {
+			req.Close()
+		}
 		return
 	}
 
@@ -148,6 +157,7 @@ Receive:
 
 	// Read in buffer to determine messag length
 	err = req.ReadRiakLenBuff(rconn)
+
 	if err != nil {
 		return
 	}
@@ -171,8 +181,8 @@ Receive:
 
 	// Go back to Receive to continually read responses
 	// from Riak. Happens when doing a map reduce
-	// cmd := req.SharedBuffer.Bytes()[4]
-	if req.mapReducing &&
+	cmd := req.SharedBuffer.Bytes()[4]
+	if cmd == commandToNum["RpbMapRedResp"] &&
 		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
 		goto Receive
 	}
@@ -194,7 +204,7 @@ func ParseMessageLength(buffer []byte) int {
 // of the Riak request. The SharedBuffer is doubled if the message length
 // is larger than the length of the buffer.
 func (req *Request) checkBufferSize(msglen int) {
-	if (msglen + 4) < req.SharedBuffer.Len() {
+	if (msglen + 4) < cap(req.SharedBuffer.Bytes()) {
 		return
 	}
 	req.SharedBuffer.Grow(msglen + 4)
@@ -209,7 +219,9 @@ ReadLen:
 	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
 	if err != nil {
 		if err != io.EOF {
-			req.Close()
+			if !req.background {
+				req.Close()
+			}
 		}
 		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
 			goto ReadLen
@@ -227,10 +239,10 @@ ReadLen:
 // Writes the contents of the client request in SharedBuffer to Riak
 func (req *Request) RiakWrite(rconn *RiakConn) error {
 ReWrite:
-	rconn.Conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	// rconn.Conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, err := rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	if err != nil {
-		log.Println("Errored writing to Riak")
+		log.Println("[RiakWrite] Error writing, closing Riak Conn")
 		rconn.Conn.Close()
 		time.Sleep(10)
 		rconn.ReDialConn()
@@ -252,13 +264,17 @@ ReadLen:
 	if err != nil {
 		nerr, ok := err.(net.Error)
 		if retries <= 3 && err != io.EOF && ok && nerr.Temporary() {
+			log.Println("RETRY RIAK READ: ", err)
+			rconn.ReDialConn()
 			retries++
 			goto ReadLen
 		}
-		log.Println("ERROR READING FROM RIAK: ", err)
 		if !req.background {
 			req.Write(ErrorResp)
 			req.Close()
+		}
+		if err != io.EOF {
+			log.Println("[ReadRiakLenBuff] Error reading, closing Riak Conn ", err)
 		}
 		rconn.Conn.Close()
 		time.Sleep(10)
@@ -280,6 +296,7 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 		if bytesRead >= req.msgLen {
 			break
 		}
+		rconn.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead:])
 		if err != nil {
 			nerr, ok := err.(net.Error)
@@ -291,6 +308,7 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 				req.Write(ErrorResp)
 				req.Close()
 			}
+			log.Println("[RiakWrite] Error receiving msg, closing Riak Conn ", err)
 			rconn.Conn.Close()
 			time.Sleep(10)
 			rconn.ReDialConn()
