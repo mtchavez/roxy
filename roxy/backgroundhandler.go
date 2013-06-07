@@ -20,7 +20,6 @@ var BgHandler = &BackgroundHandler{
 	total:     0,
 	threshold: BG_THRESHOLD,
 	m:         &sync.Mutex{},
-	Request:   make(chan *Request, BG_THRESHOLD),
 }
 
 // Returns true/false if write can be processed in background

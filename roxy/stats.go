@@ -37,6 +37,7 @@ func StatPoller() {
 			time.Sleep(10 * time.Second)
 			trackWaitQueueSize()
 			trackTotalClients()
+			trackTotalBgProcesses()
 		}
 	}
 }
@@ -73,4 +74,12 @@ func (req *Request) trackLatency(startTime, endTime time.Time) {
 	time := strconv.FormatFloat(ms, 'E', -1, 64)
 	msg := &statsite.TimeMsg{"roxy.write.time", time}
 	req.StatsClient.Emit(msg)
+}
+
+func trackTotalBgProcesses() {
+	if !StatsEnabled {
+		return
+	}
+	msg := &statsite.CountMsg{"roxy.bgprocs.total", strconv.Itoa(BgHandler.total)}
+	StatsiteClient.Emit(msg)
 }
