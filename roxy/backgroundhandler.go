@@ -2,7 +2,6 @@ package roxy
 
 import (
 	"bytes"
-	// "log"
 	"runtime"
 	"sync"
 )
@@ -46,14 +45,14 @@ func (bg *BackgroundHandler) decrTotal() {
 // Write the RpbPutReq to riak, called in a Go routine from request.go
 func (bg *BackgroundHandler) queueToBg(put *bytes.Buffer, msglen int) {
 	bg.incrTotal()
-	newBytes := make([]byte, cap(put.Bytes()))
-	copy(put.Bytes()[:], newBytes)
+	newBytes := make([]byte, 0)
+	newBytes = append(newBytes, put.Bytes()[:msglen+4]...)
 	newBuf := bytes.NewBuffer(newBytes)
 	req := &Request{SharedBuffer: newBuf, msgLen: msglen, background: true}
-	go func() {
+	go func(req *Request) {
 		req.HandleIncoming()
 		bg.decrTotal()
 		TotalClients--
 		runtime.GC()
-	}()
+	}(req)
 }
