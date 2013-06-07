@@ -49,6 +49,7 @@ func (bg *BackgroundHandler) queueToBg(put *bytes.Buffer, msglen int) {
 	newBuf := bytes.NewBuffer(newBytes)
 	req := &Request{SharedBuffer: newBuf, msgLen: msglen, background: true}
 	go func(req *Request) {
+		go trackTotalBgProcesses()
 		req.HandleIncoming()
 		bg.decrTotal()
 		TotalClients--
