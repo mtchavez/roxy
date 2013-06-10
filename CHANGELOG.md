@@ -1,3 +1,8 @@
+## v0.2.1 (2013-06-07)
+
+* Fix background buffer copying
+* Track total throughput of bg processes with Statsite
+
 ## v0.2.0 (2013-06-05)
 
 * Fix version string parsing to default to false
