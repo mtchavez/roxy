@@ -157,6 +157,10 @@ ReProcess:
 RiakRead:
 	select {
 	case <-time.After(dur):
+		// Close Riak Conn, Re-Connect and Release to Pool
+		// then re-try the write/read
+		rconn.Conn.Close()
+		rconn.ReDialConn()
 		rconn.Release()
 		goto ReProcess
 	default:
@@ -181,6 +185,7 @@ RiakRead:
 	startTime = time.Now()
 	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	endTime = time.Now()
+	log.Println("Wrote ReadResp to Client")
 	go req.trackWriteTime(startTime, endTime, "roxy.write.time")
 	go req.trackCmdsProcessed()
 }
