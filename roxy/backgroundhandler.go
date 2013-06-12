@@ -52,7 +52,6 @@ func (bg *BackgroundHandler) queueToBg(put *bytes.Buffer, msglen int) {
 		go trackTotalBgProcesses()
 		req.HandleIncoming()
 		bg.decrTotal()
-		TotalClients--
 		runtime.GC()
 	}(req)
 }
