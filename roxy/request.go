@@ -3,6 +3,7 @@ package roxy
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/mtchavez/go-statsite/statsite"
 	"io"
 	"log"
@@ -24,6 +25,8 @@ type Request struct {
 	background   bool
 	closeReq     chan bool
 }
+
+var ReadTimeout float64
 
 // RequestHandler makes a new request for an incomming client connection.
 // If stats are enabled then a statsite client will be attached.
@@ -74,6 +77,8 @@ func (req *Request) Sender() {
 				req.Write(PingResp)
 			} else if code == commandToNum["RpbGetServerInfoReq"] {
 				req.Write(ServerInfoResp)
+			} else if code == commandToNum["RpbGetReq"] {
+				req.HandleGetReq()
 			} else if BgHandler.canProcess() &&
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
@@ -132,6 +137,54 @@ func (req *Request) Read() (err error) {
 	return
 }
 
+func (req *Request) HandleGetReq() {
+	var err error
+	var rconn *RiakConn
+	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
+
+ReProcess:
+	// Write client request to Riak
+	rconn = GetRiakConn()
+	startTime := time.Now()
+	err = req.RiakWrite(rconn)
+	if err != nil {
+		req.Write(ErrorResp)
+		return
+	}
+	endTime := time.Now()
+	go req.trackWriteTime(startTime, endTime, "roxy.write.riak_time")
+
+RiakRead:
+	select {
+	case <-time.After(dur):
+		rconn.Release()
+		goto ReProcess
+	default:
+		// Read in buffer to determine messag length
+		err = req.ReadRiakLenBuff(rconn)
+
+		if err != nil {
+			return
+		}
+		req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
+		req.checkBufferSize(req.msgLen)
+
+		// Read full message from Riak
+		err = req.RiakRecvResp(rconn)
+		if err != nil {
+			return
+		}
+		rconn.Release()
+		break RiakRead
+	}
+
+	startTime = time.Now()
+	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+	endTime = time.Now()
+	go req.trackWriteTime(startTime, endTime, "roxy.write.time")
+	go req.trackCmdsProcessed()
+}
+
 // Takes the read in message from the client and writes it to Riak.
 // After a successfull write it reads the response from Riak and
 // sends that response back to the client
@@ -143,6 +196,7 @@ func (req *Request) HandleIncoming() {
 	var err error
 
 	// Write client request to Riak
+	startTime := time.Now()
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		req.Write(ErrorResp)
@@ -151,6 +205,8 @@ func (req *Request) HandleIncoming() {
 		}
 		return
 	}
+	endTime := time.Now()
+	go req.trackWriteTime(startTime, endTime, "roxy.write.riak_time")
 
 	// Read/Receive response from Riak
 Receive:
@@ -172,10 +228,10 @@ Receive:
 
 	// Write Riak response to client
 	if !req.background {
-		startTime := time.Now()
+		startTime = time.Now()
 		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
-		endTime := time.Now()
-		go req.trackLatency(startTime, endTime)
+		endTime = time.Now()
+		go req.trackWriteTime(startTime, endTime, "roxy.write.time")
 	}
 	go req.trackCmdsProcessed()
 
@@ -308,7 +364,9 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 				req.Write(ErrorResp)
 				req.Close()
 			}
-			log.Println("[RiakWrite] Error receiving msg, closing Riak Conn ", err)
+			if err != io.EOF {
+				log.Println("[RiakWrite] Error receiving msg, closing Riak Conn ", err)
+			}
 			rconn.Conn.Close()
 			time.Sleep(10)
 			rconn.ReDialConn()

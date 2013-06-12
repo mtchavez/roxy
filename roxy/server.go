@@ -89,6 +89,7 @@ func Setup(configpath string) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
+	ReadTimeout = Configuration.Doc.GetFloat64("roxy.p95", 100.0)
 	FillPool(poolSize)
 	if StatsEnabled {
 		c, err := InitStatsite()
