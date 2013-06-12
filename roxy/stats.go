@@ -65,13 +65,13 @@ func (req *Request) trackCmdsProcessed() {
 	req.StatsClient.Emit(msg)
 }
 
-func (req *Request) trackLatency(startTime, endTime time.Time) {
+func (req *Request) trackWriteTime(startTime, endTime time.Time, key string) {
 	if !StatsEnabled {
 		return
 	}
 	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
 	time := strconv.FormatFloat(ms, 'E', -1, 64)
-	msg := &statsite.TimeMsg{"roxy.write.time", time}
+	msg := &statsite.TimeMsg{key, time}
 	req.StatsClient.Emit(msg)
 }
 
