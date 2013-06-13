@@ -1,3 +1,10 @@
+## v0.3.0 (2013-06-13)
+
+* Add p95 threshold for reads
+  * Will kill request and re-write/read
+* Fix issues with reading long riak messages
+  * Read in chunks of max response of 8192
+
 ## v0.2.1 (2013-06-07)
 
 * Fix background buffer copying

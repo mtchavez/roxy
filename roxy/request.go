@@ -7,6 +7,7 @@ import (
 	"github.com/mtchavez/go-statsite/statsite"
 	"io"
 	"log"
+	"math"
 	"net"
 	"runtime"
 	"time"
@@ -148,6 +149,7 @@ ReProcess:
 	startTime := time.Now()
 	err = req.RiakWrite(rconn)
 	if err != nil {
+		log.Println("[HandleGetReq] Writing Error Resp: ", err)
 		req.Write(ErrorResp)
 		return
 	}
@@ -185,7 +187,6 @@ RiakRead:
 	startTime = time.Now()
 	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	endTime = time.Now()
-	log.Println("Wrote ReadResp to Client")
 	go req.trackWriteTime(startTime, endTime, "roxy.write.time")
 	go req.trackCmdsProcessed()
 }
@@ -204,6 +205,7 @@ func (req *Request) HandleIncoming() {
 	startTime := time.Now()
 	err = req.RiakWrite(rconn)
 	if err != nil {
+		log.Println("[HandleIncomming] Writing Error Resp: ", err)
 		req.Write(ErrorResp)
 		if !req.background {
 			req.Close()
@@ -253,7 +255,7 @@ Receive:
 // Parses the message length from first 4 bytes of message
 func ParseMessageLength(buffer []byte) int {
 	var resplength int32
-	resplength_buff := bytes.NewBuffer(buffer[0:4])
+	resplength_buff := bytes.NewBuffer(buffer[:4])
 	err := binary.Read(resplength_buff, binary.BigEndian, &resplength)
 	if err != nil {
 		log.Println("Error parsing message length: ", err)
@@ -268,7 +270,7 @@ func (req *Request) checkBufferSize(msglen int) {
 	if (msglen + 4) < cap(req.SharedBuffer.Bytes()) {
 		return
 	}
-	req.SharedBuffer.Grow(msglen + 4)
+	req.SharedBuffer.Grow(msglen + 10)
 }
 
 // Gets the length buffer from the client request
@@ -298,10 +300,10 @@ ReadLen:
 }
 
 // Writes the contents of the client request in SharedBuffer to Riak
-func (req *Request) RiakWrite(rconn *RiakConn) error {
+func (req *Request) RiakWrite(rconn *RiakConn) (err error) {
 ReWrite:
-	// rconn.Conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	_, err := rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
+	_, err = rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 	if err != nil {
 		log.Println("[RiakWrite] Error writing, closing Riak Conn")
 		rconn.Conn.Close()
@@ -310,7 +312,7 @@ ReWrite:
 
 		goto ReWrite
 	}
-	return err
+	return
 }
 
 // Reads first 4 bytes from a Riak response into the SharedBuffer
@@ -319,18 +321,21 @@ func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
 	var readIn, b int = 0, 0
 	retries := 0
 ReadLen:
+	err = nil
 	req.msgLen = 0
-	rconn.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
 	b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
 	if err != nil {
 		nerr, ok := err.(net.Error)
-		if retries <= 3 && err != io.EOF && ok && nerr.Temporary() {
+		tmpOrTimeErr := ok && (nerr.Temporary() || nerr.Timeout())
+		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
 			log.Println("RETRY RIAK READ: ", err)
 			rconn.ReDialConn()
 			retries++
 			goto ReadLen
 		}
 		if !req.background {
+			log.Println("[ReadRiakLenBuff] Writing Error Resp: ", err)
 			req.Write(ErrorResp)
 			req.Close()
 		}
@@ -340,13 +345,13 @@ ReadLen:
 		rconn.Conn.Close()
 		time.Sleep(10)
 		rconn.ReDialConn()
-		return err
+		return
 	}
 	readIn += b
 	if readIn < 4 {
 		goto ReadLen
 	}
-	return err
+	return
 }
 
 // Reads in the response from the Riak connection into SharedBuffer.
@@ -354,18 +359,23 @@ ReadLen:
 func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 	var bytesRead, b int = 0, 0
 	for {
+		err = nil
 		if bytesRead >= req.msgLen {
 			break
 		}
-		rconn.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-		b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead:])
+		rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
+		maxBytes := int(math.Min(float64(req.msgLen-bytesRead), float64(8192)))
+		b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead : 4+bytesRead+maxBytes])
 		if err != nil {
 			nerr, ok := err.(net.Error)
-			if err != io.EOF && ok && nerr.Temporary() {
+			tmpOrTimeErr := ok && (nerr.Temporary() || nerr.Timeout())
+			if err != io.EOF || tmpOrTimeErr {
+				log.Println("Error is Temporary() or Timeout() ", err, nerr)
 				time.Sleep(300 * time.Millisecond)
 				continue
 			}
 			if !req.background {
+				log.Println("[RiakRecvResp] Writing Error Resp: ", err)
 				req.Write(ErrorResp)
 				req.Close()
 			}
