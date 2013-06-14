@@ -162,14 +162,17 @@ RiakRead:
 		// Close Riak Conn, Re-Connect and Release to Pool
 		// then re-try the write/read
 		rconn.Conn.Close()
-		rconn.ReDialConn()
-		rconn.Release()
+		go func(rconn *RiakConn) {
+			rconn.ReDialConn()
+			rconn.Release()
+		}(rconn)
 		goto ReProcess
 	default:
 		// Read in buffer to determine messag length
 		err = req.ReadRiakLenBuff(rconn)
 
 		if err != nil {
+			rconn.Release()
 			return
 		}
 		req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
@@ -178,6 +181,7 @@ RiakRead:
 		// Read full message from Riak
 		err = req.RiakRecvResp(rconn)
 		if err != nil {
+			rconn.Release()
 			return
 		}
 		rconn.Release()
