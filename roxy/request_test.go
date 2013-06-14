@@ -45,7 +45,7 @@ func (s *MySuite) TestLargerMsgCheckBufferSize(c *C) {
 	req := &Request{SharedBuffer: buffer}
 	c.Assert(cap(req.SharedBuffer.Bytes()), Equals, 4)
 	req.checkBufferSize(8)
-	c.Assert(cap(req.SharedBuffer.Bytes())+req.SharedBuffer.Len(), Equals, 24)
+	c.Assert(cap(req.SharedBuffer.Bytes())+req.SharedBuffer.Len(), Equals, 30)
 }
 
 func (s *MySuite) TestReadInLengthBuffer(c *C) {
