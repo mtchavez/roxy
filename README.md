@@ -18,25 +18,40 @@ Roxy uses a [toml](https://github.com/mojombo/toml) config file for settings. He
 ```
 title = "Roxy configuration TOML"
 
-[statsite]
-  enabled = false
-  ip = "0.0.0.0"
-  port = 8125
-
 [roxy]
   ip = "127.0.0.1"
   port = 8088
+  p95 = 0.01
 
 [riak]
   ip = "127.0.0.1"
   port = 8087
   pool_size = 5
-```
-Statsite can be enabled with ```enabled = true``` if you want to capture Roxy
-stats.
 
-Pool size is used to configure how many connections to Riak you want Roxy to
-create and use.
+[statsite]
+  enabled = false
+  ip = "0.0.0.0"
+  port = 8125
+```
+
+#### [roxy]
+
+* ```ip``` - IP you want Roxy to listen on
+* ```port``` - Port you want for Roxy to listen on
+* ```p95``` - Float number in milliseconds. Used to time out reads to Riak after
+p95 time. Roxy will re-issue the read again and respond to the client.
+
+#### [riak]
+
+* ```ip``` - IP to your Riak
+* ```port``` - Protocol Buffer Port for Riak
+* ```pool_size``` - Number of connections for Roxy to make to Riak for a connection pool
+
+#### statsite
+
+* ```enabled``` - true to enable tracing stats via statsite or false to turn off
+* ```ip``` - IP of statsite
+* ```port``` - Port of statsite
 
 ### Starting a server
 
@@ -95,9 +110,6 @@ and available on default pb port ```8087```
 * Enable setting threshold of writing in background
   - Setting this to 0 would turn off quick put responses and background writing
   - This would be needed for people who expect the saved doc back on a put request
-* Given a %95 for request times
-  - Time out Riak requests if over %95 time
-  - Re-try same request to Riak
 
 ## License
 Written by Chavez

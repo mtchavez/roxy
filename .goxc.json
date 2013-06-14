@@ -8,8 +8,9 @@
     "go-fmt"
   ],
   "Resources": {
-    "Include": "README.md"
+    "Include": "README.md,*.toml"
   },
+  "Os": "linux",
   "PackageVersion": "0.3.0",
   "TaskSettings": {
     "pkg-build": {
