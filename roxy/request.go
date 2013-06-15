@@ -188,6 +188,7 @@ ReProcess:
 RiakRead:
 	select {
 	case <-time.After(dur):
+		runtime.GC()
 		goto ReProcess
 	case readReq = <-finished:
 		break RiakRead
