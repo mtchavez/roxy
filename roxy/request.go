@@ -169,9 +169,12 @@ func (req *Request) HandleGetReq() {
 	var err error
 	var rconn *RiakConn
 	var readReq *Request
+	var finished chan *Request
+	var retry bool
 	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
-	finished := make(chan *Request, 1)
 ReProcess:
+	retry = false
+	finished = make(chan *Request, 1)
 	// Write client request to Riak
 	rconn = GetRiakConn()
 	startTime := time.Now()
@@ -188,10 +191,19 @@ ReProcess:
 RiakRead:
 	select {
 	case <-time.After(dur):
+		retry = true
+		finished = nil
 		runtime.GC()
-		goto ReProcess
-	case readReq = <-finished:
 		break RiakRead
+	case val, ok := <-finished:
+		if ok {
+			readReq = val
+		}
+		break RiakRead
+	}
+
+	if retry {
+		goto ReProcess
 	}
 
 	startTime = time.Now()

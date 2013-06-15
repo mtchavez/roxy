@@ -8,7 +8,7 @@ title = "Roxy configuration TOML"
 [roxy]
   ip = "127.0.0.1"
   port = 8088
-  p95 = 0.001
+  p95 = 1.0
 
 [riak]
   ip = "127.0.0.1"
