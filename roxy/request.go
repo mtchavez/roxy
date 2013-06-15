@@ -138,11 +138,39 @@ func (req *Request) Read() (err error) {
 	return
 }
 
+func RunGet(req *Request, rconn *RiakConn, finished chan *Request) {
+	var err error
+	newBytes := make([]byte, 0)
+	newBytes = append(newBytes, req.SharedBuffer.Bytes()[:req.msgLen+4]...)
+	origBuf := bytes.NewBuffer(newBytes)
+	origMsgLen := req.msgLen
+
+	newReq := &Request{SharedBuffer: origBuf, msgLen: origMsgLen}
+	err = newReq.ReadRiakLenBuff(rconn)
+
+	if err != nil {
+		rconn.Release()
+		return
+	}
+	newReq.msgLen = ParseMessageLength(newReq.SharedBuffer.Bytes()[:4])
+	newReq.checkBufferSize(newReq.msgLen)
+
+	// Read full message from Riak
+	err = newReq.RiakRecvResp(rconn)
+	if err != nil {
+		rconn.Release()
+		return
+	}
+	rconn.Release()
+	finished <- newReq
+}
+
 func (req *Request) HandleGetReq() {
 	var err error
 	var rconn *RiakConn
+	var readReq *Request
 	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
-
+	finished := make(chan *Request, 1)
 ReProcess:
 	// Write client request to Riak
 	rconn = GetRiakConn()
@@ -156,43 +184,21 @@ ReProcess:
 	endTime := time.Now()
 	go req.trackWriteTime(startTime, endTime, "roxy.write.riak_time")
 
+	go RunGet(req, rconn, finished)
 RiakRead:
 	select {
 	case <-time.After(dur):
-		// Close Riak Conn, Re-Connect and Release to Pool
-		// then re-try the write/read
-		rconn.Conn.Close()
-		go func(rconn *RiakConn) {
-			rconn.ReDialConn()
-			rconn.Release()
-		}(rconn)
 		goto ReProcess
-	default:
-		// Read in buffer to determine messag length
-		err = req.ReadRiakLenBuff(rconn)
-
-		if err != nil {
-			rconn.Release()
-			return
-		}
-		req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
-		req.checkBufferSize(req.msgLen)
-
-		// Read full message from Riak
-		err = req.RiakRecvResp(rconn)
-		if err != nil {
-			rconn.Release()
-			return
-		}
-		rconn.Release()
+	case readReq = <-finished:
 		break RiakRead
 	}
 
 	startTime = time.Now()
-	req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+	readReq.Conn = req.Conn
+	readReq.Write(readReq.SharedBuffer.Bytes()[:readReq.msgLen+4])
 	endTime = time.Now()
-	go req.trackWriteTime(startTime, endTime, "roxy.write.time")
-	go req.trackCmdsProcessed()
+	go readReq.trackWriteTime(startTime, endTime, "roxy.write.time")
+	go readReq.trackCmdsProcessed()
 }
 
 // Takes the read in message from the client and writes it to Riak.
