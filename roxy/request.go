@@ -87,9 +87,7 @@ func (req *Request) Sender() {
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
 				req.Write(PutResp)
-				req.background = true
-				BgHandler.incrTotal()
-				req.HandleIncoming()
+				BgHandler.queueToBg(req)
 			} else {
 				req.HandleIncoming()
 			}
@@ -283,8 +281,6 @@ Receive:
 		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 		endTime = time.Now()
 		go req.trackTiming(startTime, endTime, "roxy.write.time")
-	} else {
-		BgHandler.decrTotal()
 	}
 	go req.trackCountForKey("roxy.commands.processed")
 
