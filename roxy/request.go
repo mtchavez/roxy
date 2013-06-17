@@ -82,7 +82,10 @@ func (req *Request) Sender() {
 			} else if code == commandToNum["RpbGetServerInfoReq"] {
 				req.Write(ServerInfoResp)
 			} else if code == commandToNum["RpbGetReq"] {
+				startTime := time.Now()
 				req.HandleGetReq()
+				endTime := time.Now()
+				go req.trackTiming(startTime, endTime, "roxy.read.get_req")
 			} else if BgHandler.canProcess() &&
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
