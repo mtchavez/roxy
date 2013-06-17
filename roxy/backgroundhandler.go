@@ -45,16 +45,22 @@ func (bg *BackgroundHandler) decrTotal() {
 }
 
 // Write the RpbPutReq to riak, called in a Go routine from request.go
-func (bg *BackgroundHandler) queueToBg(put *bytes.Buffer, msglen int) {
+func (bg *BackgroundHandler) queueToBg(req *Request) {
 	bg.incrTotal()
+
+	req.m.Lock()
 	newBytes := make([]byte, 0)
-	newBytes = append(newBytes, put.Bytes()[:msglen+4]...)
-	newBuf := bytes.NewBuffer(newBytes)
-	req := &Request{SharedBuffer: newBuf, msgLen: msglen, background: true}
-	go func(req *Request) {
+	newBytes = append(newBytes, req.SharedBuffer.Bytes()[:req.msgLen+4]...)
+	origBuf := bytes.NewBuffer(newBytes)
+	origMsgLen := req.msgLen
+	req.m.Unlock()
+
+	newReq := &Request{SharedBuffer: origBuf, msgLen: origMsgLen, background: true}
+
+	go func(r *Request) {
 		go trackTotalBgProcesses()
-		req.HandleIncoming()
+		r.HandleIncoming()
 		bg.decrTotal()
 		runtime.GC()
-	}(req)
+	}(newReq)
 }
