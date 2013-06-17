@@ -24,7 +24,10 @@ var BgHandler = &BackgroundHandler{
 
 // Returns true/false if write can be processed in background
 func (bg *BackgroundHandler) canProcess() bool {
-	return bg.total < bg.threshold
+	bg.m.Lock()
+	processable := bg.total < bg.threshold
+	bg.m.Unlock()
+	return processable
 }
 
 // Increment total of background writes

@@ -45,7 +45,9 @@ func trackTotalClients() {
 	if !StatsEnabled {
 		return
 	}
+	RoxyServer.m.Lock()
 	msg := &statsite.CountMsg{"roxy.clients.total", strconv.Itoa(TotalClients)}
+	RoxyServer.m.Unlock()
 	StatsiteClient.Emit(msg)
 }
 
@@ -53,19 +55,21 @@ func trackWaitQueueSize() {
 	if !StatsEnabled {
 		return
 	}
+	RiakPool.m.Lock()
 	msg := &statsite.CountMsg{"roxy.requests.waiting", strconv.Itoa(len(RiakPool.WaitQueue))}
+	RiakPool.m.Unlock()
 	StatsiteClient.Emit(msg)
 }
 
-func (req *Request) trackCmdsProcessed() {
+func (req *Request) trackCountForKey(key string) {
 	if !StatsEnabled {
 		return
 	}
-	msg := &statsite.CountMsg{"roxy.commands.processed", "1"}
+	msg := &statsite.CountMsg{key, "1"}
 	req.StatsClient.Emit(msg)
 }
 
-func (req *Request) trackWriteTime(startTime, endTime time.Time, key string) {
+func (req *Request) trackTiming(startTime, endTime time.Time, key string) {
 	if !StatsEnabled {
 		return
 	}

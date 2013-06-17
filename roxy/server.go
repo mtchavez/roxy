@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"sync"
 	"syscall"
 )
 
@@ -17,6 +18,7 @@ type Server struct {
 	ListenerConn net.Listener
 	Conns        map[net.Conn]int
 	shuttingDown bool
+	m            *sync.Mutex
 }
 
 var RoxyServer = Server{}
@@ -114,6 +116,7 @@ func RunProxy() {
 	RoxyServer.Conns = make(map[net.Conn]int, 0)
 	RoxyServer.ListenerConn = listenerConn
 	RoxyServer.shuttingDown = false
+	RoxyServer.m = &sync.Mutex{}
 	RoxyServer.Listen()
 }
 
@@ -127,6 +130,7 @@ func (s *Server) Listen() {
 		}
 	}()
 	checkForTrapSig()
+	log.Println("Roxy listener starting at ", roxyServerString())
 	for {
 		select {
 		case <-Shutdown:
@@ -140,8 +144,10 @@ func (s *Server) Listen() {
 					log.Println("Connection error: ", err)
 				}
 			} else {
+				s.m.Lock()
 				TotalClients++
 				s.Conns[conn] = TotalClients
+				s.m.Unlock()
 				go RequestHandler(conn)
 			}
 		}
@@ -150,12 +156,14 @@ func (s *Server) Listen() {
 
 // Server function to close all active connections to Roxy
 func (s *Server) closeConnections() {
+	s.m.Lock()
 	for conn, _ := range s.Conns {
 		conn.Close()
 		TotalClients--
 		delete(s.Conns, conn)
 	}
 	s.Conns = make(map[net.Conn]int, 0)
+	s.m.Unlock()
 }
 
 // Convenience method for a Server to shut itself down

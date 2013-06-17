@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ type Request struct {
 	mapReducing  bool
 	background   bool
 	closeReq     chan bool
+	m            *sync.Mutex
 }
 
 var ReadTimeout float64
@@ -42,6 +44,7 @@ func RequestHandler(conn net.Conn) {
 		msgLen:       0,
 		background:   false,
 		closeReq:     make(chan bool, 1),
+		m:            &sync.Mutex{},
 	}
 	if StatsEnabled {
 		client, err := InitStatsite()
@@ -103,9 +106,11 @@ func (req *Request) Write(buffer []byte) {
 // remove itself from the connections Roxy knows about and
 // decrement the total clients by 1
 func (req *Request) Close() {
+	RoxyServer.m.Lock()
 	req.Conn.Close()
 	delete(RoxyServer.Conns, req.Conn)
 	TotalClients--
+	RoxyServer.m.Unlock()
 	if !req.background {
 		req.closeReq <- true
 	}
@@ -139,11 +144,14 @@ func (req *Request) Read() (err error) {
 }
 
 func RunGet(req *Request, rconn *RiakConn, finished chan *Request) {
+	start := time.Now()
 	var err error
+	req.m.Lock()
 	newBytes := make([]byte, 0)
 	newBytes = append(newBytes, req.SharedBuffer.Bytes()[:req.msgLen+4]...)
 	origBuf := bytes.NewBuffer(newBytes)
 	origMsgLen := req.msgLen
+	req.m.Unlock()
 
 	newReq := &Request{SharedBuffer: origBuf, msgLen: origMsgLen}
 	err = newReq.ReadRiakLenBuff(rconn)
@@ -161,6 +169,8 @@ func RunGet(req *Request, rconn *RiakConn, finished chan *Request) {
 		rconn.Release()
 		return
 	}
+	end := time.Now()
+	go req.trackTiming(start, end, "roxy.read.riak_time")
 	rconn.Release()
 	finished <- newReq
 }
@@ -185,12 +195,13 @@ ReProcess:
 		return
 	}
 	endTime := time.Now()
-	go req.trackWriteTime(startTime, endTime, "roxy.write.riak_time")
+	go req.trackTiming(startTime, endTime, "roxy.write.riak_time")
 
 	go RunGet(req, rconn, finished)
 RiakRead:
 	select {
 	case <-time.After(dur):
+		go req.trackCountForKey("roxy.read_timeouts.total")
 		retry = true
 		finished = nil
 		runtime.GC()
@@ -210,8 +221,8 @@ RiakRead:
 	readReq.Conn = req.Conn
 	readReq.Write(readReq.SharedBuffer.Bytes()[:readReq.msgLen+4])
 	endTime = time.Now()
-	go readReq.trackWriteTime(startTime, endTime, "roxy.write.time")
-	go readReq.trackCmdsProcessed()
+	go req.trackTiming(startTime, endTime, "roxy.write.time")
+	go req.trackCountForKey("roxy.commands.processed")
 }
 
 // Takes the read in message from the client and writes it to Riak.
@@ -219,9 +230,7 @@ RiakRead:
 // sends that response back to the client
 func (req *Request) HandleIncoming() {
 	rconn := GetRiakConn()
-	defer func() {
-		rconn.Release()
-	}()
+	defer rconn.Release()
 	var err error
 
 	// Write client request to Riak
@@ -236,7 +245,7 @@ func (req *Request) HandleIncoming() {
 		return
 	}
 	endTime := time.Now()
-	go req.trackWriteTime(startTime, endTime, "roxy.write.riak_time")
+	go req.trackTiming(startTime, endTime, "roxy.write.riak_time")
 
 	// Read/Receive response from Riak
 Receive:
@@ -261,9 +270,9 @@ Receive:
 		startTime = time.Now()
 		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 		endTime = time.Now()
-		go req.trackWriteTime(startTime, endTime, "roxy.write.time")
+		go req.trackTiming(startTime, endTime, "roxy.write.time")
 	}
-	go req.trackCmdsProcessed()
+	go req.trackCountForKey("roxy.commands.processed")
 
 	// Go back to Receive to continually read responses
 	// from Riak. Happens when doing a map reduce
@@ -300,6 +309,8 @@ func (req *Request) checkBufferSize(msglen int) {
 func (req *Request) ReadInLengthBuffer() (err error) {
 	var b int = 0
 	readIn := 0
+	defer req.m.Unlock()
+	req.m.Lock()
 	req.msgLen = 0
 ReadLen:
 	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
