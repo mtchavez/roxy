@@ -87,7 +87,9 @@ func (req *Request) Sender() {
 				!req.mapReducing &&
 				code == commandToNum["RpbPutReq"] {
 				req.Write(PutResp)
-				BgHandler.queueToBg(req.SharedBuffer, req.msgLen)
+				req.background = true
+				BgHandler.incrTotal()
+				req.HandleIncoming()
 			} else {
 				req.HandleIncoming()
 			}
@@ -181,10 +183,12 @@ func (req *Request) HandleGetReq() {
 	var readReq *Request
 	var finished chan *Request
 	var retry bool
+	tries := 1
+	received := false
 	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
+	finished = make(chan *Request, 2)
 ReProcess:
 	retry = false
-	finished = make(chan *Request, 1)
 	// Write client request to Riak
 	rconn = GetRiakConn()
 	startTime := time.Now()
@@ -199,24 +203,32 @@ ReProcess:
 
 	go RunGet(req, rconn, finished)
 RiakRead:
-	select {
-	case <-time.After(dur):
-		go req.trackCountForKey("roxy.read_timeouts.total")
-		retry = true
-		finished = nil
-		runtime.GC()
-		break RiakRead
-	case val, ok := <-finished:
-		if ok {
-			readReq = val
+	for {
+		select {
+		case <-time.After(dur):
+			if tries < 2 {
+				go req.trackCountForKey("roxy.read_timeouts.total")
+				retry = true
+				runtime.GC()
+				break RiakRead
+			}
+			continue
+		case val, _ := <-finished:
+			if !received {
+				received = true
+				readReq = val
+				goto Respond
+			}
+			break RiakRead
 		}
-		break RiakRead
 	}
 
 	if retry {
+		tries++
 		goto ReProcess
 	}
 
+Respond:
 	startTime = time.Now()
 	readReq.Conn = req.Conn
 	readReq.Write(readReq.SharedBuffer.Bytes()[:readReq.msgLen+4])
@@ -271,6 +283,8 @@ Receive:
 		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
 		endTime = time.Now()
 		go req.trackTiming(startTime, endTime, "roxy.write.time")
+	} else {
+		BgHandler.decrTotal()
 	}
 	go req.trackCountForKey("roxy.commands.processed")
 
