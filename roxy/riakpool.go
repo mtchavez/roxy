@@ -1,6 +1,7 @@
 package roxy
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -32,6 +33,8 @@ type Pool struct {
 type RiakConn struct {
 	Conn   *net.TCPConn
 	Status int
+	Buff   *bytes.Buffer
+	msgLen int
 }
 
 var RiakPool = Pool{
@@ -97,6 +100,16 @@ func (rconn *RiakConn) Release() {
 	RiakPool.Push(rconn)
 }
 
+// Checks the Buff of the RiakConn against the message length
+// of the Riak request. The Buff is doubled if the message length
+// is larger than the length of the buffer.
+func (rconn *RiakConn) checkBufferSize(msglen int) {
+	if (msglen + 4) < cap(rconn.Buff.Bytes()) {
+		return
+	}
+	rconn.Buff.Grow(msglen + 10)
+}
+
 // FillPool takes in a number of connections to make to Riak and
 // make available on the stack of Riak connections
 func FillPool(num int) {
@@ -112,7 +125,7 @@ func FillPool(num int) {
 		if err != nil {
 			continue
 		}
-		RiakPool.Push(&RiakConn{conn, SLEEPING})
+		RiakPool.Push(&RiakConn{conn, SLEEPING, bytes.NewBuffer(make([]byte, 64000)), 0})
 	}
 }
 

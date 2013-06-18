@@ -9,7 +9,8 @@ import (
 	"log"
 	"math"
 	"net"
-	// "runtime"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 	"time"
 )
@@ -58,6 +59,8 @@ func RequestHandler(conn net.Conn) {
 
 // Reader for a Request to read in from the client
 func (req *Request) Reader() {
+	req.background = false
+	req.mapReducing = false
 	err := req.Read()
 	if err != nil {
 		req.Close()
@@ -97,14 +100,18 @@ func (req *Request) Sender() {
 			} else {
 				req.HandleIncoming()
 			}
+
 			req.Reader()
+			runtime.GC()
 		}
 	}
 }
 
 // Writes buffer to the client for a Request
 func (req *Request) Write(buffer []byte) {
+	req.m.Lock()
 	req.Conn.Write(buffer)
+	req.m.Unlock()
 }
 
 // Closes a Request. This will close the client connection and
@@ -138,9 +145,6 @@ func (req *Request) Read() (err error) {
 			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
 				continue
 			}
-			if !req.background {
-				req.Close()
-			}
 			return
 		}
 		bytesRead += b
@@ -148,54 +152,46 @@ func (req *Request) Read() (err error) {
 	return
 }
 
-func RunGet(req *Request, rconn *RiakConn, finished chan *Request) {
+func RunGet(req *Request, rconn *RiakConn, finished chan []byte) {
 	start := time.Now()
 	var err error
-	req.m.Lock()
-	newBytes := make([]byte, 0)
-	newBytes = append(newBytes, req.SharedBuffer.Bytes()[:req.msgLen+4]...)
-	origBuf := bytes.NewBuffer(newBytes)
-	origMsgLen := req.msgLen
-	req.m.Unlock()
 
-	newReq := &Request{SharedBuffer: origBuf, msgLen: origMsgLen}
-	err = newReq.ReadRiakLenBuff(rconn)
-
+	err = req.ReadRiakLenBuff(rconn)
 	if err != nil {
 		rconn.Release()
 		return
 	}
-	newReq.msgLen = ParseMessageLength(newReq.SharedBuffer.Bytes()[:4])
-	newReq.checkBufferSize(newReq.msgLen)
+	rconn.msgLen = ParseMessageLength(rconn.Buff.Bytes()[:4])
+	rconn.checkBufferSize(rconn.msgLen)
 
 	// Read full message from Riak
-	err = newReq.RiakRecvResp(rconn)
+	err = req.RiakRecvResp(rconn)
 	if err != nil {
 		rconn.Release()
 		return
 	}
 	end := time.Now()
 	go req.trackTiming(start, end, "roxy.read.riak_time")
+	newBuf := rconn.Buff.Bytes()[:rconn.msgLen+4]
 	rconn.Release()
-	finished <- newReq
+	finished <- newBuf
 }
 
 func (req *Request) HandleGetReq() {
 	var err error
 	var rconn *RiakConn
-	var readReq *Request
-	var finished chan *Request
+	var recBuf []byte
+	var finished chan []byte
 	var retry bool
+	var startTime, endTime time.Time
 	tries := 1
 	received := false
 	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
-	finished = make(chan *Request, 2)
-	var startTime, endTime time.Time
+	finished = make(chan []byte, 2)
+
 ReProcess:
 	retry = false
 	// Write client request to Riak
-
-	// Possibly waiting to get Riak Conn?
 	rconn = GetRiakConn()
 	startTime = time.Now()
 	err = req.RiakWrite(rconn)
@@ -208,6 +204,7 @@ ReProcess:
 	go req.trackTiming(startTime, endTime, "roxy.write.riak_time")
 
 	go RunGet(req, rconn, finished)
+
 RiakRead:
 	for {
 		select {
@@ -217,14 +214,14 @@ RiakRead:
 				retry = true
 				break RiakRead
 			}
-			continue
-		case val, _ := <-finished:
+		case val := <-finished:
 			if !received {
 				received = true
-				readReq = val
+				recBuf = val
 				goto Respond
+			} else {
+				return
 			}
-			val = nil
 			break RiakRead
 		}
 	}
@@ -236,8 +233,7 @@ RiakRead:
 
 Respond:
 	startTime = time.Now()
-	readReq.Conn = req.Conn
-	readReq.Write(readReq.SharedBuffer.Bytes()[:readReq.msgLen+4])
+	req.Write(recBuf)
 	endTime = time.Now()
 	go req.trackTiming(startTime, endTime, "roxy.write.time")
 	go req.trackCountForKey("roxy.commands.processed")
@@ -247,11 +243,12 @@ Respond:
 // After a successfull write it reads the response from Riak and
 // sends that response back to the client
 func (req *Request) HandleIncoming() {
-	rconn := GetRiakConn()
-	defer rconn.Release()
 	var err error
 	var cmd byte
 	var startTime, endTime time.Time
+
+	rconn := GetRiakConn()
+	defer rconn.Release()
 
 	// Write client request to Riak
 	startTime = time.Now()
@@ -276,8 +273,8 @@ Receive:
 	if err != nil {
 		return
 	}
-	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
-	req.checkBufferSize(req.msgLen)
+	rconn.msgLen = ParseMessageLength(rconn.Buff.Bytes()[:4])
+	rconn.checkBufferSize(rconn.msgLen)
 
 	// Read full message from Riak
 	err = req.RiakRecvResp(rconn)
@@ -288,7 +285,7 @@ Receive:
 	// Write Riak response to client
 	if !req.background {
 		startTime = time.Now()
-		req.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+		req.Write(rconn.Buff.Bytes()[:rconn.msgLen+4])
 		endTime = time.Now()
 		go req.trackTiming(startTime, endTime, "roxy.write.time")
 	}
@@ -296,9 +293,9 @@ Receive:
 
 	// Go back to Receive to continually read responses
 	// from Riak. Happens when doing a map reduce
-	cmd = req.SharedBuffer.Bytes()[4]
+	cmd = rconn.Buff.Bytes()[4]
 	if cmd == commandToNum["RpbMapRedResp"] &&
-		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
+		!bytes.Equal(rconn.Buff.Bytes()[:rconn.msgLen+4], MapRedDone) {
 		goto Receive
 	}
 	req.mapReducing = false
@@ -329,8 +326,8 @@ func (req *Request) checkBufferSize(msglen int) {
 func (req *Request) ReadInLengthBuffer() (err error) {
 	var b int = 0
 	readIn := 0
-	defer req.m.Unlock()
 	req.m.Lock()
+	defer req.m.Unlock()
 	req.msgLen = 0
 ReadLen:
 	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
@@ -376,11 +373,12 @@ func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
 	var nerr net.Error
 	var ok, tmpOrTimeErr bool
 	retries := 0
+
 ReadLen:
 	err = nil
-	req.msgLen = 0
+	rconn.msgLen = 0
 	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
-	b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
+	b, err = rconn.Conn.Read(rconn.Buff.Bytes()[readIn:4])
 	if err != nil {
 		nerr, ok = err.(net.Error)
 		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
@@ -416,14 +414,15 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 	var bytesRead, b int = 0, 0
 	var nerr net.Error
 	var ok, tmpOrTimeErr bool
+
 	for {
 		err = nil
-		if bytesRead >= req.msgLen {
+		if bytesRead >= rconn.msgLen {
 			break
 		}
 		rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
-		maxBytes := int(math.Min(float64(req.msgLen-bytesRead), float64(8192)))
-		b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead : 4+bytesRead+maxBytes])
+		maxBytes := int(math.Min(float64(rconn.msgLen-bytesRead), float64(8192)))
+		b, err = rconn.Conn.Read(rconn.Buff.Bytes()[4+bytesRead : 4+bytesRead+maxBytes])
 		if err != nil {
 			nerr, ok = err.(net.Error)
 			tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
