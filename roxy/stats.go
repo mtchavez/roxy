@@ -3,11 +3,13 @@ package roxy
 import (
 	"github.com/mtchavez/go-statsite/statsite"
 	"log"
+	"runtime"
 	"strconv"
 	"time"
 )
 
 var StatsiteClient *statsite.Client
+var memStats runtime.MemStats
 
 // Initializes a statsite client based on the toml config file
 // Returns a statsite.Client and an error
@@ -35,6 +37,9 @@ func StatPoller() {
 			return
 		default:
 			time.Sleep(10 * time.Second)
+			// TODO: Export runtime.MemStats.PauseTotalNs
+			// runtime.GC()
+			// runtime.ReadMemStats(&memStats)
 			trackWaitQueueSize()
 			trackTotalClients()
 		}

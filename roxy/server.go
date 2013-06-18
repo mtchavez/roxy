@@ -93,6 +93,7 @@ func Setup(configpath string) {
 	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
 	ReadTimeout = Configuration.Doc.GetFloat64("roxy.p95", 100.0)
 	FillPool(poolSize)
+
 	if StatsEnabled {
 		c, err := InitStatsite()
 		if err == nil {
@@ -129,6 +130,8 @@ func (s *Server) Listen() {
 			<-statsClosed
 		}
 	}()
+	var conn net.Conn
+	var err error
 	checkForTrapSig()
 	log.Println("Roxy listener starting at ", roxyServerString())
 	for {
@@ -136,9 +139,10 @@ func (s *Server) Listen() {
 		case <-Shutdown:
 			log.Println("Roxy listener has shut down")
 			s.closeConnections()
+			runtime.GC()
 			return
 		default:
-			conn, err := s.ListenerConn.Accept()
+			conn, err = s.ListenerConn.Accept()
 			if err != nil {
 				if !s.shuttingDown {
 					log.Println("Connection error: ", err)

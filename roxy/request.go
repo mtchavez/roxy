@@ -9,7 +9,7 @@ import (
 	"log"
 	"math"
 	"net"
-	"runtime"
+	// "runtime"
 	"sync"
 	"time"
 )
@@ -61,20 +61,23 @@ func (req *Request) Reader() {
 	err := req.Read()
 	if err != nil {
 		req.Close()
+		err = nil
 		return
 	}
+	err = nil
 	req.ReadIn <- true
 }
 
 // Sender for a Request to listen on ReadIn channel sent from Reader().
 // Passes read in message to HandleIncoming()
 func (req *Request) Sender() {
+	var code byte
 	for {
 		select {
 		case <-req.closeReq:
 			return
 		case <-req.ReadIn:
-			code := req.SharedBuffer.Bytes()[4]
+			code = req.SharedBuffer.Bytes()[4]
 			req.background = false
 			req.mapReducing = (code == commandToNum["RpbMapRedReq"])
 			if code == commandToNum["RpbPingReq"] {
@@ -95,7 +98,6 @@ func (req *Request) Sender() {
 				req.HandleIncoming()
 			}
 			req.Reader()
-			runtime.GC()
 		}
 	}
 }
@@ -188,18 +190,21 @@ func (req *Request) HandleGetReq() {
 	received := false
 	dur, _ := time.ParseDuration(fmt.Sprintf("%fms", ReadTimeout))
 	finished = make(chan *Request, 2)
+	var startTime, endTime time.Time
 ReProcess:
 	retry = false
 	// Write client request to Riak
+
+	// Possibly waiting to get Riak Conn?
 	rconn = GetRiakConn()
-	startTime := time.Now()
+	startTime = time.Now()
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		log.Println("[HandleGetReq] Writing Error Resp: ", err)
 		req.Write(ErrorResp)
 		return
 	}
-	endTime := time.Now()
+	endTime = time.Now()
 	go req.trackTiming(startTime, endTime, "roxy.write.riak_time")
 
 	go RunGet(req, rconn, finished)
@@ -210,7 +215,6 @@ RiakRead:
 			if tries < 2 {
 				go req.trackCountForKey("roxy.read_timeouts.total")
 				retry = true
-				runtime.GC()
 				break RiakRead
 			}
 			continue
@@ -220,6 +224,7 @@ RiakRead:
 				readReq = val
 				goto Respond
 			}
+			val = nil
 			break RiakRead
 		}
 	}
@@ -245,9 +250,11 @@ func (req *Request) HandleIncoming() {
 	rconn := GetRiakConn()
 	defer rconn.Release()
 	var err error
+	var cmd byte
+	var startTime, endTime time.Time
 
 	// Write client request to Riak
-	startTime := time.Now()
+	startTime = time.Now()
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		log.Println("[HandleIncomming] Writing Error Resp: ", err)
@@ -257,7 +264,7 @@ func (req *Request) HandleIncoming() {
 		}
 		return
 	}
-	endTime := time.Now()
+	endTime = time.Now()
 	go req.trackTiming(startTime, endTime, "roxy.write.riak_time")
 
 	// Read/Receive response from Riak
@@ -289,7 +296,7 @@ Receive:
 
 	// Go back to Receive to continually read responses
 	// from Riak. Happens when doing a map reduce
-	cmd := req.SharedBuffer.Bytes()[4]
+	cmd = req.SharedBuffer.Bytes()[4]
 	if cmd == commandToNum["RpbMapRedResp"] &&
 		!bytes.Equal(req.SharedBuffer.Bytes()[:req.msgLen+4], MapRedDone) {
 		goto Receive
@@ -366,6 +373,8 @@ ReWrite:
 // to determine the message length for the Request.
 func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
 	var readIn, b int = 0, 0
+	var nerr net.Error
+	var ok, tmpOrTimeErr bool
 	retries := 0
 ReadLen:
 	err = nil
@@ -373,8 +382,8 @@ ReadLen:
 	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
 	b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
 	if err != nil {
-		nerr, ok := err.(net.Error)
-		tmpOrTimeErr := ok && (nerr.Temporary() || nerr.Timeout())
+		nerr, ok = err.(net.Error)
+		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
 			log.Println("RETRY RIAK READ: ", err)
 			rconn.ReDialConn()
@@ -405,6 +414,8 @@ ReadLen:
 // Continually reads until full message length is read into buffer.
 func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 	var bytesRead, b int = 0, 0
+	var nerr net.Error
+	var ok, tmpOrTimeErr bool
 	for {
 		err = nil
 		if bytesRead >= req.msgLen {
@@ -414,8 +425,8 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 		maxBytes := int(math.Min(float64(req.msgLen-bytesRead), float64(8192)))
 		b, err = rconn.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead : 4+bytesRead+maxBytes])
 		if err != nil {
-			nerr, ok := err.(net.Error)
-			tmpOrTimeErr := ok && (nerr.Temporary() || nerr.Timeout())
+			nerr, ok = err.(net.Error)
+			tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 			if err != io.EOF || tmpOrTimeErr {
 				log.Println("Error is Temporary() or Timeout() ", err, nerr)
 				time.Sleep(300 * time.Millisecond)
