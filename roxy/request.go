@@ -10,7 +10,6 @@ import (
 	"math"
 	"net"
 	"runtime"
-	"runtime/pprof"
 	"sync"
 	"time"
 )
