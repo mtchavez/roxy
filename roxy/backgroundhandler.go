@@ -1,7 +1,6 @@
 package roxy
 
 import (
-	"bytes"
 	"sync"
 )
 
@@ -9,11 +8,12 @@ import (
 type BackgroundHandler struct {
 	total     int
 	threshold int
+	index     int
 	m         *sync.Mutex
 	Request   chan *Request
 }
 
-const BG_THRESHOLD = 000
+const BG_THRESHOLD = 500
 
 var BgHandler = &BackgroundHandler{
 	total:     0,
@@ -43,27 +43,8 @@ func (bg *BackgroundHandler) decrTotal() {
 	bg.m.Unlock()
 }
 
-// Write the RpbPutReq to riak, called in a Go routine from request.go
-func (bg *BackgroundHandler) queueToBg(req *Request) {
+func (bg *BackgroundHandler) handleInBg(req *Request) {
 	bg.incrTotal()
-	req.m.Lock()
-	defer req.m.Unlock()
-
-	newBytes := make([]byte, 0)
-	newBytes = append(newBytes, req.SharedBuffer.Bytes()[:req.msgLen+4]...)
-	origBuf := bytes.NewBuffer(newBytes)
-	origMsgLen := req.msgLen
-
-	newReq := &Request{
-		SharedBuffer: origBuf,
-		msgLen:       origMsgLen,
-		background:   true,
-		m:            &sync.Mutex{},
-	}
-
-	go trackTotalBgProcesses()
-	go func() {
-		newReq.HandleIncoming()
-		bg.decrTotal()
-	}()
+	req.HandleIncoming()
+	bg.decrTotal()
 }

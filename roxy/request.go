@@ -4,151 +4,57 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/mtchavez/go-statsite/statsite"
 	"io"
 	"log"
 	"math"
 	"net"
-	"runtime"
-	"sync"
 	"time"
 )
 
-// Request is a container for a client connection
-// that has a buffer to manage client and riak read/write
 type Request struct {
-	Conn         net.Conn
-	ReadIn       chan bool
-	SharedBuffer *bytes.Buffer
-	msgLen       int
-	statsEnabled bool
-	StatsClient  *statsite.Client
-	mapReducing  bool
-	background   bool
-	closeReq     chan bool
-	m            *sync.Mutex
+	handler     *ClientHandler
+	background  bool
+	mapReducing bool
 }
 
 var ReadTimeout float64
 
-// RequestHandler makes a new request for an incomming client connection.
-// If stats are enabled then a statsite client will be attached.
-// The result of calling this method is a Sender() and Reader() will
-// be running in separate go routines to handle client reading and writing.
-func RequestHandler(conn net.Conn) {
-	in := make(chan bool, 8)
-	req := &Request{
-		Conn:         conn,
-		ReadIn:       in,
-		SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
-		msgLen:       0,
-		background:   false,
-		closeReq:     make(chan bool, 1),
-		m:            &sync.Mutex{},
-	}
-	if StatsEnabled {
-		client, err := InitStatsite()
-		if err == nil {
-			req.StatsClient = client
-		}
-	}
-	go req.Sender()
-	go req.Reader()
-}
-
-// Reader for a Request to read in from the client
-func (req *Request) Reader() {
+func (req *Request) Process() {
+	// Determine type of Request
+	code := req.handler.Buff.Bytes()[4]
 	req.background = false
-	req.mapReducing = false
-	err := req.Read()
-	if err != nil {
-		req.Close()
-		err = nil
-		return
-	}
-	err = nil
-	req.ReadIn <- true
-}
+	req.mapReducing = (code == commandToNum["RpbMapRedReq"])
 
-// Sender for a Request to listen on ReadIn channel sent from Reader().
-// Passes read in message to HandleIncoming()
-func (req *Request) Sender() {
-	var code byte
-	for {
-		select {
-		case <-req.closeReq:
-			return
-		case <-req.ReadIn:
-			code = req.SharedBuffer.Bytes()[4]
-			req.background = false
-			req.mapReducing = (code == commandToNum["RpbMapRedReq"])
-			if code == commandToNum["RpbPingReq"] {
-				req.Write(PingResp)
-			} else if code == commandToNum["RpbGetServerInfoReq"] {
-				req.Write(ServerInfoResp)
-			} else if code == commandToNum["RpbGetReq"] {
-				startTime := time.Now()
-				req.HandleGetReq()
-				endTime := time.Now()
-				go req.trackTiming(startTime, endTime, "roxy.read.get_req")
-			} else if BgHandler.canProcess() &&
-				!req.mapReducing &&
-				code == commandToNum["RpbPutReq"] {
-				req.Write(PutResp)
-				BgHandler.queueToBg(req)
-			} else {
-				req.HandleIncoming()
-			}
-
-			req.Reader()
-			runtime.GC()
+	if code == commandToNum["RpbPingReq"] {
+		req.handler.Write(PingResp)
+	} else if code == commandToNum["RpbGetServerInfoReq"] {
+		req.handler.Write(ServerInfoResp)
+	} else if code == commandToNum["RpbGetReq"] {
+		startTime := time.Now()
+		req.HandleGetReq()
+		endTime := time.Now()
+		go req.trackTiming(startTime, endTime, "roxy.read.get_req")
+	} else if BgHandler.canProcess() &&
+		!req.mapReducing &&
+		code == commandToNum["RpbPutReq"] {
+		req.handler.Write(PutResp)
+		newHandler := &ClientHandler{
+			StatsClient: req.handler.StatsClient,
+			Buff:        bytes.NewBuffer(req.handler.Buff.Bytes()),
+			msgLen:      req.handler.msgLen,
+			m:           req.handler.m,
 		}
-	}
-}
-
-// Writes buffer to the client for a Request
-func (req *Request) Write(buffer []byte) {
-	req.m.Lock()
-	req.Conn.Write(buffer)
-	req.m.Unlock()
-}
-
-// Closes a Request. This will close the client connection and
-// remove itself from the connections Roxy knows about and
-// decrement the total clients by 1
-func (req *Request) Close() {
-	RoxyServer.m.Lock()
-	req.Conn.Close()
-	delete(RoxyServer.Conns, req.Conn)
-	TotalClients--
-	RoxyServer.m.Unlock()
-	if !req.background {
-		req.closeReq <- true
-	}
-}
-
-// Read will read from client connection into the SharedBuffer for the Request
-func (req *Request) Read() (err error) {
-	err = req.ReadInLengthBuffer()
-	if err != nil {
-		return
-	}
-	var bytesRead, b int = 0, 0
-	req.checkBufferSize(req.msgLen)
-	for {
-		if bytesRead >= req.msgLen {
-			break
+		newRequest := &Request{
+			handler:    newHandler,
+			background: true,
 		}
-		b, err = req.Conn.Read(req.SharedBuffer.Bytes()[4+bytesRead:])
-		if err != nil {
-			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
-				continue
-			}
-			return
-		}
-		bytesRead += b
+		go trackTotalBgProcesses()
+		go BgHandler.handleInBg(newRequest)
+	} else {
+		req.HandleIncoming()
 	}
-	return
+
+	req.handler.done <- true
 }
 
 func RunGet(req *Request, rconn *RiakConn, finished chan []byte) {
@@ -196,7 +102,7 @@ ReProcess:
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		log.Println("[HandleGetReq] Writing Error Resp: ", err)
-		req.Write(ErrorResp)
+		req.handler.Write(ErrorResp)
 		return
 	}
 	endTime = time.Now()
@@ -232,7 +138,7 @@ RiakRead:
 
 Respond:
 	startTime = time.Now()
-	req.Write(recBuf)
+	req.handler.Write(recBuf)
 	endTime = time.Now()
 	go req.trackTiming(startTime, endTime, "roxy.write.time")
 	go req.trackCountForKey("roxy.commands.processed")
@@ -254,9 +160,9 @@ func (req *Request) HandleIncoming() {
 	err = req.RiakWrite(rconn)
 	if err != nil {
 		log.Println("[HandleIncomming] Writing Error Resp: ", err)
-		req.Write(ErrorResp)
+		req.handler.Write(ErrorResp)
 		if !req.background {
-			req.Close()
+			req.handler.Close()
 		}
 		return
 	}
@@ -284,7 +190,7 @@ Receive:
 	// Write Riak response to client
 	if !req.background {
 		startTime = time.Now()
-		req.Write(rconn.Buff.Bytes()[:rconn.msgLen+4])
+		req.handler.Write(rconn.Buff.Bytes()[:rconn.msgLen+4])
 		endTime = time.Now()
 		go req.trackTiming(startTime, endTime, "roxy.write.time")
 	}
@@ -311,49 +217,11 @@ func ParseMessageLength(buffer []byte) int {
 	return int(resplength)
 }
 
-// Checks the SharedBuffer of the Request against the message length
-// of the Riak request. The SharedBuffer is doubled if the message length
-// is larger than the length of the buffer.
-func (req *Request) checkBufferSize(msglen int) {
-	if (msglen + 4) < cap(req.SharedBuffer.Bytes()) {
-		return
-	}
-	req.SharedBuffer.Grow(msglen + 10)
-}
-
-// Gets the length buffer from the client request
-func (req *Request) ReadInLengthBuffer() (err error) {
-	var b int = 0
-	readIn := 0
-	req.m.Lock()
-	defer req.m.Unlock()
-	req.msgLen = 0
-ReadLen:
-	b, err = req.Conn.Read(req.SharedBuffer.Bytes()[readIn:4])
-	if err != nil {
-		if err != io.EOF {
-			if !req.background {
-				req.Close()
-			}
-		}
-		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
-			goto ReadLen
-		}
-		return
-	}
-	readIn += b
-	if readIn < 4 {
-		goto ReadLen
-	}
-	req.msgLen = ParseMessageLength(req.SharedBuffer.Bytes()[:4])
-	return
-}
-
 // Writes the contents of the client request in SharedBuffer to Riak
 func (req *Request) RiakWrite(rconn *RiakConn) (err error) {
 ReWrite:
 	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
-	_, err = rconn.Conn.Write(req.SharedBuffer.Bytes()[:req.msgLen+4])
+	_, err = rconn.Conn.Write(req.handler.Buff.Bytes()[:req.handler.msgLen+4])
 	if err != nil {
 		log.Println("[RiakWrite] Error writing, closing Riak Conn")
 		rconn.Conn.Close()
@@ -389,8 +257,8 @@ ReadLen:
 		}
 		if !req.background {
 			log.Println("[ReadRiakLenBuff] Writing Error Resp: ", err)
-			req.Write(ErrorResp)
-			req.Close()
+			req.handler.Write(ErrorResp)
+			req.handler.Close()
 		}
 		if err != io.EOF {
 			log.Println("[ReadRiakLenBuff] Error reading, closing Riak Conn ", err)
@@ -432,8 +300,8 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 			}
 			if !req.background {
 				log.Println("[RiakRecvResp] Writing Error Resp: ", err)
-				req.Write(ErrorResp)
-				req.Close()
+				req.handler.Write(ErrorResp)
+				req.handler.Close()
 			}
 			if err != io.EOF {
 				log.Println("[RiakWrite] Error receiving msg, closing Riak Conn ", err)

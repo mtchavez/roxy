@@ -152,7 +152,7 @@ func (s *Server) Listen() {
 				TotalClients++
 				s.Conns[conn] = TotalClients
 				s.m.Unlock()
-				go RequestHandler(conn)
+				go ClientListener(conn)
 			}
 		}
 	}

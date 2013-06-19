@@ -86,6 +86,7 @@ func (rconn *RiakConn) String() string {
 	fmt.Println("[RiakConn] ", &rconn)
 	fmt.Println("conn=", rconn.Conn)
 	fmt.Println("status=" + strconv.Itoa(rconn.Status))
+	fmt.Println("len(buff)= " + strconv.Itoa(rconn.Buff.Len()))
 	return ""
 }
 

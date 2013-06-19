@@ -71,7 +71,7 @@ func (req *Request) trackCountForKey(key string) {
 		return
 	}
 	msg := &statsite.CountMsg{key, "1"}
-	req.StatsClient.Emit(msg)
+	req.handler.StatsClient.Emit(msg)
 }
 
 func (req *Request) trackTiming(startTime, endTime time.Time, key string) {
@@ -81,7 +81,9 @@ func (req *Request) trackTiming(startTime, endTime time.Time, key string) {
 	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
 	time := strconv.FormatFloat(ms, 'E', -1, 64)
 	msg := &statsite.TimeMsg{key, time}
-	req.StatsClient.Emit(msg)
+	req.handler.m.Lock()
+	req.handler.StatsClient.Emit(msg)
+	req.handler.m.Unlock()
 }
 
 func trackTotalBgProcesses() {
