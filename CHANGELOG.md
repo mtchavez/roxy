@@ -1,3 +1,14 @@
+## v0.4.1 (2013-06-20)
+
+* Add bg_procs as roxy option in config
+* Temporarily disable p95 backup request feature
+* Track total bg processes and throughput separately
+
+## v0.4.0 (2013-06-19)
+
+* Refactor of request handling
+* Added ClientHandler to read and make requests
+
 ## v0.3.0 (2013-06-13)
 
 * Add p95 threshold for reads

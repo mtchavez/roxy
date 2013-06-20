@@ -42,6 +42,7 @@ func StatPoller() {
 			// runtime.ReadMemStats(&memStats)
 			trackWaitQueueSize()
 			trackTotalClients()
+			trackTotalBgProcesses()
 		}
 	}
 }
@@ -90,6 +91,6 @@ func trackTotalBgProcesses() {
 	if !StatsEnabled {
 		return
 	}
-	msg := &statsite.CountMsg{"roxy.bgprocs.total", strconv.Itoa(1)}
+	msg := &statsite.CountMsg{"roxy.bgprocs.total", strconv.Itoa(BgHandler.GetTotal())}
 	StatsiteClient.Emit(msg)
 }

@@ -89,9 +89,17 @@ func Setup(configpath string) {
 	setupServerInfoResp()
 	ParseConfig(configpath)
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
+
 	StatsEnabled = Configuration.Doc.GetBool("statsite.enabled", false)
 	ReadTimeout = Configuration.Doc.GetFloat64("roxy.p95", 100.0)
+	BG_THRESHOLD = Configuration.Doc.GetInt("roxy.bg_procs", 50)
+	BgHandler = &BackgroundHandler{
+		total:     0,
+		threshold: BG_THRESHOLD,
+		m:         &sync.Mutex{},
+	}
+
+	poolSize := Configuration.Doc.GetInt("riak.pool_size", 5)
 	FillPool(poolSize)
 
 	if StatsEnabled {

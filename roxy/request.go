@@ -29,7 +29,7 @@ func (req *Request) Process() {
 		req.handler.Write(PingResp)
 	} else if code == commandToNum["RpbGetServerInfoReq"] {
 		req.handler.Write(ServerInfoResp)
-	} else if code == commandToNum["RpbGetReq"] {
+	} else if false && code == commandToNum["RpbGetReq"] {
 		startTime := time.Now()
 		req.HandleGetReq()
 		endTime := time.Now()
@@ -48,7 +48,7 @@ func (req *Request) Process() {
 			handler:    newHandler,
 			background: true,
 		}
-		go trackTotalBgProcesses()
+		go req.trackCountForKey("roxy.bgprocs.throughput")
 		go BgHandler.handleInBg(newRequest)
 	} else {
 		req.HandleIncoming()

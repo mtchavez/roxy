@@ -2,6 +2,7 @@ package roxy
 
 import (
 	"sync"
+	"time"
 )
 
 // Container for keeping total and threshold of background writes
@@ -13,13 +14,8 @@ type BackgroundHandler struct {
 	Request   chan *Request
 }
 
-const BG_THRESHOLD = 500
-
-var BgHandler = &BackgroundHandler{
-	total:     0,
-	threshold: BG_THRESHOLD,
-	m:         &sync.Mutex{},
-}
+var BG_THRESHOLD int
+var BgHandler *BackgroundHandler
 
 // Returns true/false if write can be processed in background
 func (bg *BackgroundHandler) canProcess() bool {
@@ -41,6 +37,13 @@ func (bg *BackgroundHandler) decrTotal() {
 	bg.m.Lock()
 	bg.total--
 	bg.m.Unlock()
+}
+
+func (bg *BackgroundHandler) GetTotal() int {
+	bg.m.Lock()
+	t := bg.total
+	bg.m.Unlock()
+	return t
 }
 
 func (bg *BackgroundHandler) handleInBg(req *Request) {
