@@ -1,3 +1,3 @@
 package roxy
 
-const VERSION = "0.3.7"
+const VERSION = "0.4.1"
