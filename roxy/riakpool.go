@@ -141,8 +141,9 @@ ReDial:
 	}
 	conn, err := dialServer(serverString)
 	if err != nil {
+		log.Println("Retry connecting to Riak")
 		tries++
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(5) * time.Second * time.Duration(tries))
 		goto ReDial
 	}
 	rconn.Conn = conn

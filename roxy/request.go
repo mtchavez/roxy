@@ -219,16 +219,24 @@ func ParseMessageLength(buffer []byte) int {
 
 // Writes the contents of the client request in SharedBuffer to Riak
 func (req *Request) RiakWrite(rconn *RiakConn) (err error) {
+	var nerr net.Error
+	var ok, tmpOrTimeErr bool
+	retries := 0
+
 ReWrite:
-	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
+	rconn.Conn.SetDeadline(time.Now().Add(3 * time.Second))
 	_, err = rconn.Conn.Write(req.handler.Buff.Bytes()[:req.handler.msgLen+4])
 	if err != nil {
+		nerr, ok = err.(net.Error)
+		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
+		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
+			time.Sleep(10 * time.Millisecond)
+			goto ReWrite
+		}
 		log.Println("[RiakWrite] Error writing, closing Riak Conn")
 		rconn.Conn.Close()
-		time.Sleep(10)
+		time.Sleep(10 * time.Millisecond)
 		rconn.ReDialConn()
-
-		goto ReWrite
 	}
 	return
 }
@@ -244,13 +252,12 @@ func (req *Request) ReadRiakLenBuff(rconn *RiakConn) (err error) {
 ReadLen:
 	err = nil
 	rconn.msgLen = 0
-	rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
+	rconn.Conn.SetDeadline(time.Now().Add(3 * time.Second))
 	b, err = rconn.Conn.Read(rconn.Buff.Bytes()[readIn:4])
 	if err != nil {
 		nerr, ok = err.(net.Error)
 		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
-			log.Println("RETRY RIAK READ: ", err)
 			rconn.ReDialConn()
 			retries++
 			goto ReadLen
@@ -264,7 +271,7 @@ ReadLen:
 			log.Println("[ReadRiakLenBuff] Error reading, closing Riak Conn ", err)
 		}
 		rconn.Conn.Close()
-		time.Sleep(10)
+		time.Sleep(10 * time.Millisecond)
 		rconn.ReDialConn()
 		return
 	}
@@ -287,7 +294,7 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 		if bytesRead >= rconn.msgLen {
 			break
 		}
-		rconn.Conn.SetDeadline(time.Now().Add(60 * time.Second))
+		rconn.Conn.SetDeadline(time.Now().Add(3 * time.Second))
 		maxBytes := int(math.Min(float64(rconn.msgLen-bytesRead), float64(8192)))
 		b, err = rconn.Conn.Read(rconn.Buff.Bytes()[4+bytesRead : 4+bytesRead+maxBytes])
 		if err != nil {
@@ -295,7 +302,7 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 			tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 			if err != io.EOF || tmpOrTimeErr {
 				log.Println("Error is Temporary() or Timeout() ", err, nerr)
-				time.Sleep(300 * time.Millisecond)
+				time.Sleep(1 * time.Millisecond)
 				continue
 			}
 			if !req.background {
@@ -307,7 +314,7 @@ func (req *Request) RiakRecvResp(rconn *RiakConn) (err error) {
 				log.Println("[RiakWrite] Error receiving msg, closing Riak Conn ", err)
 			}
 			rconn.Conn.Close()
-			time.Sleep(10)
+			time.Sleep(10 * time.Millisecond)
 			rconn.ReDialConn()
 			return
 		}
