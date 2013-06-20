@@ -2,7 +2,6 @@ package roxy
 
 import (
 	"sync"
-	"time"
 )
 
 // Container for keeping total and threshold of background writes
