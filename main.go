@@ -4,11 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mtchavez/roxy/roxy"
+	"log"
 	"os"
+	"runtime/pprof"
+	"time"
 )
+
+var profFile *os.File
 
 func init() {
 	config := flag.String("config", "./roxy/config.toml", "Path to config file")
+	profile := flag.String("memprof", "", "Name of file to output profiling.")
 	version := flag.Bool("v", false, "prints current roxy version")
 	flag.Usage = func() {
 		fmt.Printf("Usage %s [OPTIONS] [name ...]\n", os.Args[0])
@@ -20,11 +26,28 @@ func init() {
 		fmt.Println(roxy.VERSION)
 		os.Exit(0)
 	}
+	log.Println(*profile)
+	if *profile != "" {
+		var err error
+		profFile, err = os.Create("roxy.pprof")
+		if err != nil {
+			log.Println(err.Error())
+			os.Exit(1)
+		}
+	}
 	checkConfig(*config)
 	roxy.Setup(*config)
 }
 
 func main() {
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			pprof.WriteHeapProfile(profFile)
+		}
+	}()
+	defer pprof.WriteHeapProfile(profFile)
+	defer profFile.Close()
 	roxy.RunProxy()
 }
 
