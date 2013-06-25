@@ -5,10 +5,12 @@ import (
 	"log"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 )
 
 var StatsiteClient *statsite.Client
+var StatsMux *sync.Mutex
 var memStats runtime.MemStats
 
 // Initializes a statsite client based on the toml config file
@@ -18,6 +20,7 @@ func InitStatsite() (client *statsite.Client, err error) {
 	port := Configuration.Doc.GetInt("statsite.port", 8125)
 	addr := ip + ":" + strconv.Itoa(port)
 	client, err = statsite.NewClient(addr)
+	StatsMux = &sync.Mutex{}
 	if err != nil {
 		log.Println("Error connecting to statsite")
 	}
@@ -38,7 +41,7 @@ func StatPoller() {
 		default:
 			time.Sleep(10 * time.Second)
 			// TODO: Export runtime.MemStats.PauseTotalNs
-			// runtime.GC()
+			runtime.GC()
 			// runtime.ReadMemStats(&memStats)
 			trackWaitQueueSize()
 			trackTotalClients()
@@ -54,7 +57,9 @@ func trackTotalClients() {
 	RoxyServer.m.Lock()
 	msg := &statsite.CountMsg{"roxy.clients.total", strconv.Itoa(TotalClients)}
 	RoxyServer.m.Unlock()
+	StatsMux.Lock()
 	StatsiteClient.Emit(msg)
+	StatsMux.Unlock()
 }
 
 func trackWaitQueueSize() {
@@ -64,7 +69,9 @@ func trackWaitQueueSize() {
 	RiakPool.m.Lock()
 	msg := &statsite.CountMsg{"roxy.requests.waiting", strconv.Itoa(len(RiakPool.WaitQueue))}
 	RiakPool.m.Unlock()
+	StatsMux.Lock()
 	StatsiteClient.Emit(msg)
+	StatsMux.Unlock()
 }
 
 func (req *Request) trackCountForKey(key string) {
@@ -72,7 +79,9 @@ func (req *Request) trackCountForKey(key string) {
 		return
 	}
 	msg := &statsite.CountMsg{key, "1"}
-	req.handler.StatsClient.Emit(msg)
+	StatsMux.Lock()
+	StatsiteClient.Emit(msg)
+	StatsMux.Unlock()
 }
 
 func (req *Request) trackTiming(startTime, endTime time.Time, key string) {
@@ -82,9 +91,9 @@ func (req *Request) trackTiming(startTime, endTime time.Time, key string) {
 	ms := float64(endTime.Sub(startTime)) / float64(time.Millisecond)
 	time := strconv.FormatFloat(ms, 'E', -1, 64)
 	msg := &statsite.TimeMsg{key, time}
-	req.handler.m.Lock()
-	req.handler.StatsClient.Emit(msg)
-	req.handler.m.Unlock()
+	StatsMux.Lock()
+	StatsiteClient.Emit(msg)
+	StatsMux.Unlock()
 }
 
 func trackTotalBgProcesses() {
@@ -92,5 +101,7 @@ func trackTotalBgProcesses() {
 		return
 	}
 	msg := &statsite.CountMsg{"roxy.bgprocs.total", strconv.Itoa(BgHandler.GetTotal())}
+	StatsMux.Lock()
 	StatsiteClient.Emit(msg)
+	StatsMux.Unlock()
 }

@@ -2,19 +2,17 @@ package roxy
 
 import (
 	"bytes"
-	"github.com/mtchavez/go-statsite/statsite"
 	"io"
 	"net"
 	"sync"
 )
 
 type ClientHandler struct {
-	Conn        net.Conn
-	Buff        *bytes.Buffer
-	StatsClient *statsite.Client
-	msgLen      int
-	done        chan bool
-	m           *sync.Mutex
+	Conn   net.Conn
+	Buff   *bytes.Buffer
+	msgLen int
+	done   chan bool
+	m      *sync.Mutex
 }
 
 func ClientListener(conn net.Conn) {
@@ -24,12 +22,6 @@ func ClientListener(conn net.Conn) {
 		msgLen: 0,
 		done:   make(chan bool),
 		m:      &sync.Mutex{},
-	}
-	if StatsEnabled {
-		client, err := InitStatsite()
-		if err == nil {
-			handler.StatsClient = client
-		}
 	}
 	handler.ClientReader()
 }

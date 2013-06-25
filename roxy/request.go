@@ -39,10 +39,9 @@ func (req *Request) Process() {
 		code == commandToNum["RpbPutReq"] {
 		req.handler.Write(PutResp)
 		newHandler := &ClientHandler{
-			StatsClient: req.handler.StatsClient,
-			Buff:        bytes.NewBuffer(req.handler.Buff.Bytes()),
-			msgLen:      req.handler.msgLen,
-			m:           req.handler.m,
+			Buff:   bytes.NewBuffer(req.handler.Buff.Bytes()),
+			msgLen: req.handler.msgLen,
+			m:      req.handler.m,
 		}
 		newRequest := &Request{
 			handler:    newHandler,
@@ -230,12 +229,13 @@ ReWrite:
 		nerr, ok = err.(net.Error)
 		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
-			time.Sleep(10 * time.Millisecond)
+			retries++
+			time.Sleep(time.Duration(retries*10) * time.Millisecond)
 			goto ReWrite
 		}
 		log.Println("[RiakWrite] Error writing, closing Riak Conn")
 		rconn.Conn.Close()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Duration(retries*10) * time.Millisecond)
 		rconn.ReDialConn()
 	}
 	return
@@ -258,8 +258,8 @@ ReadLen:
 		nerr, ok = err.(net.Error)
 		tmpOrTimeErr = ok && (nerr.Temporary() || nerr.Timeout())
 		if retries <= 3 && (err != io.EOF || tmpOrTimeErr) {
-			rconn.ReDialConn()
 			retries++
+			time.Sleep(time.Duration(retries*10) * time.Millisecond)
 			goto ReadLen
 		}
 		if !req.background {
@@ -271,7 +271,7 @@ ReadLen:
 			log.Println("[ReadRiakLenBuff] Error reading, closing Riak Conn ", err)
 		}
 		rconn.Conn.Close()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Duration(retries*10) * time.Millisecond)
 		rconn.ReDialConn()
 		return
 	}
