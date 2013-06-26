@@ -1,7 +1,6 @@
 package roxy
 
 import (
-	"bytes"
 	. "launchpad.net/gocheck"
 	"net"
 	"time"
@@ -10,11 +9,12 @@ import (
 func (s *MySuite) TestValidRequest(c *C) {
 	req := &Request{}
 
-	var in chan bool
-	c.Assert(req.ReadIn, FitsTypeOf, in)
+	var boolean bool
+	c.Assert(req.background, FitsTypeOf, boolean)
+	c.Assert(req.mapReducing, FitsTypeOf, boolean)
 
-	var shared *bytes.Buffer
-	c.Assert(req.SharedBuffer, FitsTypeOf, shared)
+	var handler *ClientHandler
+	c.Assert(req.handler, FitsTypeOf, handler)
 }
 
 func (s *MySuite) TestParseMessageLength(c *C) {
@@ -30,88 +30,6 @@ func (s *MySuite) TestParseMessageLength(c *C) {
 	println(message)
 	length = ParseMessageLength(message)
 	c.Assert(length, Equals, 8344)
-}
-
-func (s *MySuite) TestSmallerMsgCheckBufferSize(c *C) {
-	buffer := bytes.NewBuffer(make([]byte, 16))
-	req := &Request{SharedBuffer: buffer}
-	c.Assert(req.SharedBuffer.Bytes(), HasLen, 16)
-	req.checkBufferSize(8)
-	c.Assert(req.SharedBuffer.Bytes(), HasLen, 16)
-}
-
-func (s *MySuite) TestLargerMsgCheckBufferSize(c *C) {
-	buffer := bytes.NewBuffer(make([]byte, 4))
-	req := &Request{SharedBuffer: buffer}
-	c.Assert(cap(req.SharedBuffer.Bytes()), Equals, 4)
-	req.checkBufferSize(8)
-	c.Assert(cap(req.SharedBuffer.Bytes())+req.SharedBuffer.Len(), Equals, 30)
-}
-
-func (s *MySuite) TestReadInLengthBuffer(c *C) {
-	fn := func(ch chan net.Conn) {
-		conn, _ := net.Dial("tcp", "127.0.0.1:8089")
-		cn := <-ch
-		req := &Request{
-			Conn:         cn,
-			SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
-			msgLen:       0,
-		}
-		conn.Write([]byte{0, 0, 0, 1})
-		err := req.ReadInLengthBuffer()
-		c.Assert(err, IsNil)
-		c.Assert(req.msgLen, Equals, 1)
-		req.Conn.Close()
-		delete(RoxyServer.Conns, req.Conn)
-		TotalClients--
-	}
-	s.RunInProxy(fn)
-}
-
-func (s *MySuite) TestReadingMessage(c *C) {
-	fn := func(ch chan net.Conn) {
-		conn, _ := net.Dial("tcp", "127.0.0.1:8089")
-		cn := <-ch
-		req := &Request{
-			Conn:         cn,
-			SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
-			msgLen:       0,
-		}
-		conn.Write([]byte{0, 0, 0, 1, 1})
-		err := req.Read()
-		c.Assert(err, IsNil)
-		c.Assert(req.msgLen, Equals, 1)
-		fullMsg := req.SharedBuffer.Bytes()[:4+req.msgLen]
-		c.Assert(fullMsg, DeepEquals, []byte{0, 0, 0, 1, 1})
-		req.Conn.Close()
-		delete(RoxyServer.Conns, req.Conn)
-		TotalClients--
-	}
-	s.RunInProxy(fn)
-}
-
-func (s *MySuite) TestClosingRequest(c *C) {
-	RoxyServer = Server{Conns: make(map[net.Conn]int, 0)}
-	Setup("./config.toml")
-	fn := func(ch chan net.Conn) {
-		net.Dial("tcp", "127.0.0.1:8089")
-		cn := <-ch
-		req := &Request{
-			Conn:         cn,
-			SharedBuffer: bytes.NewBuffer(make([]byte, 64000)),
-			msgLen:       0,
-		}
-		TotalClients++
-		total := TotalClients
-		RoxyServer.Conns[cn] = TotalClients
-		c.Assert(RoxyServer.Conns[req.Conn], Equals, 1)
-		req.Conn.Close()
-		delete(RoxyServer.Conns, req.Conn)
-		TotalClients--
-		c.Assert(RoxyServer.Conns[req.Conn], Equals, 0)
-		c.Assert(TotalClients, Equals, total-1)
-	}
-	s.RunInProxy(fn)
 }
 
 func (s *MySuite) TestMakingRequest(c *C) {

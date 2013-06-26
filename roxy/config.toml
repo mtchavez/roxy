@@ -1,7 +1,7 @@
 title = "Roxy configuration TOML"
 
 [statsite]
-  enabled = true
+  enabled = false
   ip = "0.0.0.0"
   port = 8125
 
@@ -14,4 +14,4 @@ title = "Roxy configuration TOML"
 [riak]
   ip = "127.0.0.1"
   port = 8087
-  pool_size = 25
+  pool_size = 5
