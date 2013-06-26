@@ -107,9 +107,9 @@ and available on default pb port ```8087```
 
 ## TODO
 
-* Enable setting threshold of writing in background
-  - Setting this to 0 would turn off quick put responses and background writing
-  - This would be needed for people who expect the saved doc back on a put request
+* p95 backup requests
+  - Currently turned off
+  - Need to figure out intermittent hanging when this is turned on
 
 ## License
 Written by Chavez

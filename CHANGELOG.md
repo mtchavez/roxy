@@ -1,3 +1,9 @@
+## v0.4.2 (2013-06-25)
+
+* Use one Statsite connection for all stats
+* Incremental sleeps for Riak read retries
+* Remove re-dial of Riak connection after failing to read until max retries hit
+
 ## v0.4.1 (2013-06-20)
 
 * Add bg_procs as roxy option in config
