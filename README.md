@@ -22,6 +22,7 @@ title = "Roxy configuration TOML"
   ip = "127.0.0.1"
   port = 8088
   p95 = 0.01
+  bg_procs = 10
 
 [riak]
   ip = "127.0.0.1"
@@ -40,6 +41,7 @@ title = "Roxy configuration TOML"
 * ```port``` - Port you want for Roxy to listen on
 * ```p95``` - Float number in milliseconds. Used to time out reads to Riak after
 p95 time. Roxy will re-issue the read again and respond to the client.
+* ```bg_procs``` - Threshold of total number of background PutReq that can run at one time. Otherwise runs normally.
 
 #### [riak]
 
@@ -47,7 +49,7 @@ p95 time. Roxy will re-issue the read again and respond to the client.
 * ```port``` - Protocol Buffer Port for Riak
 * ```pool_size``` - Number of connections for Roxy to make to Riak for a connection pool
 
-#### statsite
+#### [statsite]
 
 * ```enabled``` - true to enable tracing stats via statsite or false to turn off
 * ```ip``` - IP of statsite
@@ -97,7 +99,7 @@ for i in xrange(1, 10):
 ## Documentation
 
 Docs can be found on [godoc](http://godoc.org/github.com/mtchavez/roxy) or
-run ```go doc github.com/mtchavez/roxy``` locally
+run ```go doc github.com/mtchavez/roxy/roxy``` locally
 
 ## Test
 
