@@ -40,14 +40,17 @@ func init() {
 }
 
 func main() {
-	go func() {
-		for {
-			time.Sleep(5 * time.Second)
-			pprof.WriteHeapProfile(profFile)
-		}
-	}()
-	defer pprof.WriteHeapProfile(profFile)
-	defer profFile.Close()
+	if profFile != nil {
+		go func() {
+			for {
+				time.Sleep(5 * time.Second)
+				pprof.WriteHeapProfile(profFile)
+			}
+		}()
+
+		defer pprof.WriteHeapProfile(profFile)
+		defer profFile.Close()
+	}
 	roxy.RunProxy()
 }
 
