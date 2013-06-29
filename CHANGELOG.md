@@ -1,3 +1,7 @@
+## v0.4.3 (2013-06-28)
+
+* Handle RpbListKeysReq multi-message response
+
 ## v0.4.2 (2013-06-25)
 
 * Use one Statsite connection for all stats

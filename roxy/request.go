@@ -202,6 +202,10 @@ Receive:
 		!bytes.Equal(rconn.Buff.Bytes()[:rconn.msgLen+4], MapRedDone) {
 		goto Receive
 	}
+	if cmd == commandToNum["RpbListKeysResp"] &&
+		!bytes.Equal(rconn.Buff.Bytes()[:rconn.msgLen+4], ListKeysDone) {
+		goto Receive
+	}
 	req.mapReducing = false
 }
 

@@ -1,6 +1,7 @@
 package roxy
 
 var MapRedDone []byte = []byte{0, 0, 0, 3, 24, 24, 1}
+var ListKeysDone []byte = []byte{0, 0, 0, 3, 18, 16, 1}
 var PingResp []byte = []byte{0, 0, 0, 1, 2}
 var ErrorResp []byte
 var PutResp []byte

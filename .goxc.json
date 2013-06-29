@@ -11,7 +11,7 @@
     "Include": "README.md,*.toml"
   },
   "Os": "linux",
-  "PackageVersion": "0.4.2",
+  "PackageVersion": "0.4.3",
   "TaskSettings": {
     "pkg-build": {
       "metadata": {
