@@ -8,11 +8,11 @@ import (
 )
 
 type ClientHandler struct {
+	sync.Mutex
 	Conn   net.Conn
 	Buff   *bytes.Buffer
 	msgLen int
 	done   chan bool
-	m      *sync.Mutex
 }
 
 func ClientListener(conn net.Conn) {
@@ -21,7 +21,6 @@ func ClientListener(conn net.Conn) {
 		Buff:   bytes.NewBuffer(make([]byte, 64000)),
 		msgLen: 0,
 		done:   make(chan bool),
-		m:      &sync.Mutex{},
 	}
 	handler.ClientReader()
 }
@@ -103,14 +102,14 @@ func (handler *ClientHandler) Write(buffer []byte) {
 
 // Closes client connection and removes from RoxyServer known connections
 func (handler *ClientHandler) Close() {
-	RoxyServer.m.Lock()
+	RoxyServer.Lock()
 	handler.Conn.Close()
 	delete(RoxyServer.Conns, handler.Conn)
 	TotalClients--
 	if TotalClients < 0 {
 		TotalClients = 0
 	}
-	RoxyServer.m.Unlock()
+	RoxyServer.Unlock()
 }
 
 // Increases buffer if msglen is bigger than current capacity

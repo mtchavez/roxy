@@ -17,16 +17,15 @@ const (
 
 var poolcc = make([]*RiakConn, 5)
 var poolwq = make([]chan *RiakConn, 0)
-var poolm = &sync.Mutex{}
 
 // Struct for a Pool that contains a stack of Riak connections
 // and a WaitQueue that is used when no Riak connections are
 // available.
 type Pool struct {
+	sync.Mutex
 	index     int
 	ConnQueue []*RiakConn
 	WaitQueue []chan *RiakConn
-	m         *sync.Mutex
 }
 
 // Struct to hold a connection to Riak and an internal BUSY or SLEEPING status
@@ -41,24 +40,23 @@ var RiakPool = Pool{
 	index:     0,
 	ConnQueue: poolcc,
 	WaitQueue: poolwq,
-	m:         poolm,
 }
 
 // Pushes a RiakConn back onto the stack.
 // If there is anything in the WaitQueue the RiakConn is sent over a
 // channel to the next waiting request instead of being pushed onto the stack.
 func (p *Pool) Push(rconn *RiakConn) (bool, error) {
-	p.m.Lock()
+	p.Lock()
 	if len(p.WaitQueue) > 0 {
 		ch := p.WaitQueue[0]
 		p.WaitQueue = p.WaitQueue[1:]
-		p.m.Unlock()
+		p.Unlock()
 		ch <- rconn
 		return true, nil
 	}
 	p.ConnQueue[p.index] = rconn
 	p.index += 1
-	p.m.Unlock()
+	p.Unlock()
 	return true, nil
 }
 
@@ -66,28 +64,27 @@ func (p *Pool) Push(rconn *RiakConn) (bool, error) {
 // If the stack is empty a channel is made and listens for a RiakConn
 // to be sent when one becomes available.
 func (p *Pool) Pop() (*RiakConn, error) {
-	p.m.Lock()
+	p.Lock()
 	if p.index > 0 {
 		p.index = p.index - 1
 		rconn := p.ConnQueue[p.index]
 		rconn.Lock()
-		p.m.Unlock()
+		p.Unlock()
 		return rconn, nil
 	}
 	ch := make(chan *RiakConn, 1)
 	p.WaitQueue = append(p.WaitQueue, ch)
-	p.m.Unlock()
+	p.Unlock()
 	rconn := <-ch
 	return rconn, nil
 
 }
 
 func (rconn *RiakConn) String() string {
-	fmt.Println("[RiakConn] ", &rconn)
-	fmt.Println("conn=", rconn.Conn)
-	fmt.Println("status=" + strconv.Itoa(rconn.Status))
-	fmt.Println("len(buff)= " + strconv.Itoa(rconn.Buff.Len()))
-	return ""
+	return fmt.Sprintf(`[RiakConn %+v]{
+		status: %+v,
+		buff_len: %+v,
+}`, &rconn, rconn.Conn, rconn.Status, rconn.Buff.Len())
 }
 
 // Sets RiakConn status to BUSY

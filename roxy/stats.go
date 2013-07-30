@@ -54,9 +54,9 @@ func trackTotalClients() {
 	if !StatsEnabled {
 		return
 	}
-	RoxyServer.m.Lock()
+	RoxyServer.Lock()
 	msg := &statsite.CountMsg{"roxy.clients.total", strconv.Itoa(TotalClients)}
-	RoxyServer.m.Unlock()
+	RoxyServer.Unlock()
 	StatsMux.Lock()
 	StatsiteClient.Emit(msg)
 	StatsMux.Unlock()
@@ -66,9 +66,9 @@ func trackWaitQueueSize() {
 	if !StatsEnabled {
 		return
 	}
-	RiakPool.m.Lock()
+	RiakPool.Lock()
 	msg := &statsite.CountMsg{"roxy.requests.waiting", strconv.Itoa(len(RiakPool.WaitQueue))}
-	RiakPool.m.Unlock()
+	RiakPool.Unlock()
 	StatsMux.Lock()
 	StatsiteClient.Emit(msg)
 	StatsMux.Unlock()

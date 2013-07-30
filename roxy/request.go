@@ -41,7 +41,6 @@ func (req *Request) Process() {
 		newHandler := &ClientHandler{
 			Buff:   bytes.NewBuffer(req.handler.Buff.Bytes()),
 			msgLen: req.handler.msgLen,
-			m:      req.handler.m,
 		}
 		newRequest := &Request{
 			handler:    newHandler,
